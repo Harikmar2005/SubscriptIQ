@@ -61,7 +61,7 @@ export const AnalyticsView: React.FC = () => {
       ['Customer Lifetime Value (LTV)', `₹${metrics.clv.toLocaleString()}`, 'ARPU / Monthly Churn Rate'],
       ['Customer Churn Rate', `${metrics.churnRate}%`, 'Cancelled Subscriptions / Total Subscriptions Period Start'],
       ['Gateway Success Rate', `${metrics.paymentSuccessRate}%`, 'Successful Charges / Total Payment Attempts * 100'],
-      ['Active Subscriptions', `${metrics.activeSubscriptions}`, 'SubFlow State Machine status = active'],
+      ['Active Subscriptions', `${metrics.activeSubscriptions}`, 'SubscriptIQ State Machine status = active'],
       ['Total Enterprise Entities', `${metrics.totalCustomers}`, 'Registered Customer Accounts'],
     ];
 
@@ -70,7 +70,7 @@ export const AnalyticsView: React.FC = () => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `subflow_financial_report_${selectedYear}.csv`);
+    link.setAttribute('download', `subscriptiq_financial_report_${selectedYear}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

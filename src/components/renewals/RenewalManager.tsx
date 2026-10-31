@@ -261,7 +261,7 @@ export const RenewalManager: React.FC = () => {
             </div>
 
             <div className="p-3 bg-slate-50 rounded-xl text-[11px] text-slate-500 leading-relaxed">
-              If all retries fail, SubFlow FSM automatically transitions the subscription from Past Due to Cancelled and notifies the account owner.
+              If all retries fail, SubscriptIQ FSM automatically transitions the subscription from Past Due to Cancelled and notifies the account owner.
             </div>
           </div>
 

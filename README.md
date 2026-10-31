@@ -1,4 +1,4 @@
-# SubFlow Enterprise | SaaS Subscription Management Platform
+# SubscriptIQ Enterprise | SaaS Subscription Management Platform
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-cyan.svg)](https://react.dev/)
@@ -53,7 +53,7 @@ An enterprise-grade, full-stack **Subscription Management & Recurring Billing Pl
 ## 🏗️ Architecture
 
 ```
-                                  [ SubFlow SaaS ]
+                               [ SubscriptIQ SaaS ]
                                          │
                  ┌───────────────────────┴───────────────────────┐
                  ▼                                               ▼

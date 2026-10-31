@@ -43,15 +43,15 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-slate-200 gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">
-                  S
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-extrabold text-xs tracking-tighter">
+                  IQ
                 </div>
                 <span className="text-lg font-black tracking-tight text-slate-900">
-                  SubFlow Enterprise
+                  SubscriptIQ Enterprise
                 </span>
               </div>
               <div className="text-xs text-slate-500 mt-2 space-y-0.5">
-                <div>SubFlow Cloud Technologies India Pvt Ltd</div>
+                <div>SubscriptIQ Cloud Technologies India Pvt Ltd</div>
                 <div>Tower 3, Global Cyber Tech Park, Sector 48</div>
                 <div>Gurugram, Haryana - 122001, India</div>
                 <div className="font-mono text-slate-700">GSTIN: 06AAACS9281N1ZG</div>
@@ -176,7 +176,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
           {/* Footer Notes */}
           <div className="mt-8 pt-4 border-t border-slate-100 text-[11px] text-slate-400 flex flex-col sm:flex-row justify-between gap-2">
             <div>This is a computer-generated tax invoice. No signature required.</div>
-            <div className="font-mono">SubFlow Enterprise Billing Engine v2.4</div>
+            <div className="font-mono">SubscriptIQ Enterprise Billing Engine v2.4</div>
           </div>
         </div>
 

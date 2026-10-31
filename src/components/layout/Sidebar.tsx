@@ -73,18 +73,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => 
       {/* Brand Header */}
       <div className="flex items-center justify-between h-16 px-4 border-b border-slate-100">
         <div className="flex items-center gap-3 overflow-hidden">
-          <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-lg shadow-sm shadow-indigo-200 shrink-0">
-            S
+          <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-extrabold text-sm shadow-sm shadow-indigo-200 shrink-0 tracking-tighter">
+            IQ
           </div>
           {!collapsed && (
             <div className="flex flex-col">
               <span className="font-bold text-slate-900 tracking-tight text-sm leading-none flex items-center gap-1.5">
-                SubFlow
+                Subscript<span className="text-indigo-600">IQ</span>
                 <span className="text-[10px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/60">
                   Enterprise
                 </span>
               </span>
-              <span className="text-[11px] text-slate-400 mt-1">SaaS Recurring Billing</span>
+              <span className="text-[11px] text-slate-400 mt-1">Subscription Intelligence</span>
             </div>
           )}
         </div>

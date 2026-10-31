@@ -172,7 +172,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const handleCreateCustomer = (data: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>) => {
     const cust = apiService.createCustomer(data);
     refreshData();
-    showToast('success', 'Customer Created', `${cust.name} added to SubFlow directory.`);
+    showToast('success', 'Customer Created', `${cust.name} added to SubscriptIQ directory.`);
     return cust;
   };
 

@@ -26,16 +26,16 @@ import {
 } from './mockData';
 
 const STORAGE_KEYS = {
-  USERS: 'subflow_users',
-  CUSTOMERS: 'subflow_customers',
-  PLANS: 'subflow_plans',
-  SUBSCRIPTIONS: 'subflow_subscriptions',
-  PAYMENTS: 'subflow_payments',
-  INVOICES: 'subflow_invoices',
-  NOTIFICATIONS: 'subflow_notifications',
-  HISTORY: 'subflow_history',
-  USAGE: 'subflow_usage',
-  CURRENT_USER: 'subflow_current_user',
+  USERS: 'subscriptiq_users',
+  CUSTOMERS: 'subscriptiq_customers',
+  PLANS: 'subscriptiq_plans',
+  SUBSCRIPTIONS: 'subscriptiq_subscriptions',
+  PAYMENTS: 'subscriptiq_payments',
+  INVOICES: 'subscriptiq_invoices',
+  NOTIFICATIONS: 'subscriptiq_notifications',
+  HISTORY: 'subscriptiq_history',
+  USAGE: 'subscriptiq_usage',
+  CURRENT_USER: 'subscriptiq_current_user',
 };
 
 // Initialize localStorage if empty

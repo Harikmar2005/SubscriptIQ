@@ -14,7 +14,7 @@ import {
 export const DEMO_USERS: User[] = [
   {
     id: 'user-admin-1',
-    email: 'admin@subflow.io',
+    email: 'admin@subscriptiq.io',
     name: 'Alexander Vance',
     role: 'admin',
     avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
@@ -640,7 +640,7 @@ export const INITIAL_HISTORY: SubscriptionHistoryEvent[] = [
     eventType: 'created',
     details: 'Subscription created on Professional Scale (Monthly, ₹799/mo).',
     timestamp: '2025-02-14T11:20:00Z',
-    userEmail: 'alexander@subflow.io',
+    userEmail: 'alexander@subscriptiq.io',
   },
   {
     id: 'hist-2',

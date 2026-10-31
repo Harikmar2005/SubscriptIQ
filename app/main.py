@@ -8,7 +8,7 @@ from app.ml.churn_model import ChurnPredictionEngine
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="SubFlow Enterprise Billing Engine",
+    title="SubscriptIQ Enterprise Billing Engine",
     description="Full-Stack SaaS Subscription Management REST API with Razorpay Simulation & AI Churn Analytics",
     version="2.4.0",
     docs_url="/docs",
@@ -28,7 +28,7 @@ churn_engine = ChurnPredictionEngine()
 @app.get("/")
 def root():
     return {
-        "platform": "SubFlow Enterprise",
+        "platform": "SubscriptIQ Enterprise",
         "version": "2.4.0",
         "status": "online",
         "docs": "/docs"

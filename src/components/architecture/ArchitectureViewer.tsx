@@ -41,7 +41,7 @@ from app.core.config import settings
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="SubFlow Enterprise Billing Engine",
+    title="SubscriptIQ Enterprise Billing Engine",
     description="High-Throughput SaaS Subscription Management & AI Churn Analytics REST API",
     version="2.4.0",
     docs_url="/docs",

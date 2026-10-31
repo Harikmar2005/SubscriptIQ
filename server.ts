@@ -16,7 +16,7 @@ async function startServer() {
   app.get('/api/healthz', (req, res) => {
     res.json({
       status: 'healthy',
-      engine: 'SubFlow Enterprise Full-Stack SaaS',
+      engine: 'SubscriptIQ Enterprise Full-Stack SaaS',
       version: '2.4.0',
       timestamp: new Date().toISOString(),
     });
@@ -37,7 +37,7 @@ async function startServer() {
   }
 
   app.listen(port, '0.0.0.0', () => {
-    console.log(`SubFlow Enterprise running at http://0.0.0.0:${port}`);
+    console.log(`SubscriptIQ Enterprise running at http://0.0.0.0:${port}`);
   });
 }
 
