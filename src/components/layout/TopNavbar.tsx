@@ -18,7 +18,9 @@ export const TopNavbar: React.FC = () => {
     activeTab,
     setActiveTab,
     currentUser,
+    currentTenantId,
     switchRole,
+    switchTenant,
     notifications,
     unreadNotifCount,
     markNotificationRead,
@@ -29,10 +31,12 @@ export const TopNavbar: React.FC = () => {
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
+  const [showTenantMenu, setShowTenantMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<{ type: string; title: string; subtitle: string; tab: any }[]>([]);
   const notifRef = useRef<HTMLDivElement>(null);
   const roleRef = useRef<HTMLDivElement>(null);
+  const tenantRef = useRef<HTMLDivElement>(null);
 
   // Close dropdowns on click outside
   useEffect(() => {
@@ -42,6 +46,9 @@ export const TopNavbar: React.FC = () => {
       }
       if (roleRef.current && !roleRef.current.contains(e.target as Node)) {
         setShowRoleMenu(false);
+      }
+      if (tenantRef.current && !tenantRef.current.contains(e.target as Node)) {
+        setShowTenantMenu(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -165,7 +172,7 @@ export const TopNavbar: React.FC = () => {
       </div>
 
       {/* Right Controls */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5">
         {/* Reset Demo Data button */}
         <button
           onClick={resetAllDemoData}
@@ -175,6 +182,82 @@ export const TopNavbar: React.FC = () => {
           <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
           <span className="hidden lg:inline">Reset Demo</span>
         </button>
+
+        {/* Tenant Isolation Switcher */}
+        <div className="relative" ref={tenantRef}>
+          <button
+            onClick={() => setShowTenantMenu(!showTenantMenu)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+              currentTenantId === 'tenant-isolated-enterprise'
+                ? 'bg-purple-50 text-purple-800 border-purple-300'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            }`}
+            title="Demonstrate Phase 3 Tenant Isolation"
+          >
+            <Building className="w-3.5 h-3.5 text-indigo-500" />
+            <span className="hidden sm:inline font-medium">
+              {currentTenantId === 'tenant-isolated-enterprise' ? 'Zenith Aerospace (Isolated)' : 'SubscriptIQ India'}
+            </span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-700 font-bold uppercase">
+              Tenant
+            </span>
+            <ChevronDown className="w-3 h-3 opacity-60" />
+          </button>
+
+          {showTenantMenu && (
+            <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-200 p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+              <div className="px-2.5 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                Multi-Tenant Isolation (Phase 3)
+              </div>
+
+              <button
+                onClick={() => {
+                  switchTenant('tenant-subscriptiq-india');
+                  setShowTenantMenu(false);
+                }}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  currentTenantId === 'tenant-subscriptiq-india'
+                    ? 'bg-indigo-50 text-indigo-700'
+                    : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <div className="text-left">
+                  <div className="font-semibold flex items-center gap-1.5">
+                    <span>SubscriptIQ India</span>
+                    <span className="text-[9px] px-1 py-0.2 rounded bg-indigo-100 text-indigo-700 font-bold">Prod</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400">5 customers • Active MRR • Full ledger</div>
+                </div>
+                {currentTenantId === 'tenant-subscriptiq-india' && <Check className="w-4 h-4 text-indigo-600" />}
+              </button>
+
+              <button
+                onClick={() => {
+                  switchTenant('tenant-isolated-enterprise');
+                  setShowTenantMenu(false);
+                }}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors mt-1 ${
+                  currentTenantId === 'tenant-isolated-enterprise'
+                    ? 'bg-purple-50 text-purple-800'
+                    : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <div className="text-left">
+                  <div className="font-semibold flex items-center gap-1.5">
+                    <span>Zenith Aerospace</span>
+                    <span className="text-[9px] px-1 py-0.2 rounded bg-purple-100 text-purple-700 font-bold">Isolated</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400">1 customer • Zero cross-tenant leakage</div>
+                </div>
+                {currentTenantId === 'tenant-isolated-enterprise' && <Check className="w-4 h-4 text-purple-600" />}
+              </button>
+
+              <div className="mt-2 pt-2 border-t border-slate-100 px-2 text-[10px] text-slate-400 leading-tight">
+                Data isolation strictly enforces tenant_id boundaries across SQL models, payments, and invoices.
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Role Switcher Menu */}
         <div className="relative" ref={roleRef}>

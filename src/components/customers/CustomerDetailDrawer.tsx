@@ -1,6 +1,7 @@
 import React from 'react';
 import { Customer } from '../../types';
 import { useApp } from '../../context/AppContext';
+import { apiService } from '../../services/api';
 import {
   X,
   Building,
@@ -16,6 +17,8 @@ import {
   AlertCircle,
   Clock,
   ArrowUpRight,
+  Gauge,
+  Zap,
 } from 'lucide-react';
 
 interface CustomerDetailDrawerProps {
@@ -160,6 +163,61 @@ export const CustomerDetailDrawer: React.FC<CustomerDetailDrawerProps> = ({
               </div>
             )}
           </div>
+
+          {/* Hybrid Usage-Based Billing & Metering */}
+          {(() => {
+            const usage = apiService.getCustomerUsage(customer.id);
+            if (!usage) return null;
+            return (
+              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Gauge className="w-4 h-4 text-indigo-600" />
+                    <span className="text-xs font-bold text-slate-900">
+                      Hybrid Usage Metering (Phase 6)
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">
+                    Cycle: {usage.billingCycle}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
+                    <div className="text-[10px] text-slate-400 font-medium">API Requests</div>
+                    <div className="text-xs font-bold text-slate-800 mt-0.5">
+                      {usage.apiCallsMonth.toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
+                    <div className="text-[10px] text-slate-400 font-medium">Cloud Storage</div>
+                    <div className="text-xs font-bold text-slate-800 mt-0.5">
+                      {usage.storageGbUsed} GB
+                    </div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
+                    <div className="text-[10px] text-slate-400 font-medium">Monthly Logins</div>
+                    <div className="text-xs font-bold text-slate-800 mt-0.5">
+                      {usage.loginCountLast30Days}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <span className="text-slate-500">Metered Overages:</span>
+                  <span
+                    className={`font-bold ${
+                      usage.meteredOveragesInr > 0 ? 'text-amber-700' : 'text-emerald-700'
+                    }`}
+                  >
+                    {usage.meteredOveragesInr > 0
+                      ? `+₹${usage.meteredOveragesInr} (Auto-invoiced)`
+                      : 'Included in base quota'}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* AI Churn Risk Assessment */}
           {churnInfo && (

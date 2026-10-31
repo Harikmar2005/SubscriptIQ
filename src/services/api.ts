@@ -11,6 +11,12 @@ import {
   User,
   DashboardMetrics,
   RevenueForecastMonth,
+  MLModelEvaluation,
+  FinancialLedgerEntry,
+  RevenueAnomaly,
+  SmartRetentionCampaign,
+  WhatIfSimulationParams,
+  WhatIfSimulationResult,
 } from '../types';
 import {
   DEMO_USERS,
@@ -22,7 +28,12 @@ import {
   INITIAL_NOTIFICATIONS,
   INITIAL_HISTORY,
   INITIAL_USAGE,
-  INITIAL_CHURN_PREDICTIONS,
+  INITIAL_FINANCIAL_LEDGER,
+  INITIAL_REVENUE_ANOMALIES,
+  INITIAL_SMART_RETENTION_CAMPAIGNS,
+  TRAINED_ML_METRICS,
+  PRIMARY_TENANT_ID,
+  SECONDARY_TENANT_ID,
 } from './mockData';
 
 const STORAGE_KEYS = {
@@ -35,6 +46,9 @@ const STORAGE_KEYS = {
   NOTIFICATIONS: 'subscriptiq_notifications',
   HISTORY: 'subscriptiq_history',
   USAGE: 'subscriptiq_usage',
+  LEDGER: 'subscriptiq_ledger',
+  ANOMALIES: 'subscriptiq_anomalies',
+  CAMPAIGNS: 'subscriptiq_retention_campaigns',
   CURRENT_USER: 'subscriptiq_current_user',
 };
 
@@ -69,8 +83,17 @@ export function initLocalStorage(): void {
   if (!localStorage.getItem(STORAGE_KEYS.USAGE)) {
     localStorage.setItem(STORAGE_KEYS.USAGE, JSON.stringify(INITIAL_USAGE));
   }
+  if (!localStorage.getItem(STORAGE_KEYS.LEDGER)) {
+    localStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(INITIAL_FINANCIAL_LEDGER));
+  }
+  if (!localStorage.getItem(STORAGE_KEYS.ANOMALIES)) {
+    localStorage.setItem(STORAGE_KEYS.ANOMALIES, JSON.stringify(INITIAL_REVENUE_ANOMALIES));
+  }
+  if (!localStorage.getItem(STORAGE_KEYS.CAMPAIGNS)) {
+    localStorage.setItem(STORAGE_KEYS.CAMPAIGNS, JSON.stringify(INITIAL_SMART_RETENTION_CAMPAIGNS));
+  }
   if (!localStorage.getItem(STORAGE_KEYS.CURRENT_USER)) {
-    localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(DEMO_USERS[0])); // default admin
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(DEMO_USERS[0]));
   }
 }
 
@@ -85,6 +108,9 @@ export function resetToSeedData(): void {
   localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(INITIAL_NOTIFICATIONS));
   localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(INITIAL_HISTORY));
   localStorage.setItem(STORAGE_KEYS.USAGE, JSON.stringify(INITIAL_USAGE));
+  localStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(INITIAL_FINANCIAL_LEDGER));
+  localStorage.setItem(STORAGE_KEYS.ANOMALIES, JSON.stringify(INITIAL_REVENUE_ANOMALIES));
+  localStorage.setItem(STORAGE_KEYS.CAMPAIGNS, JSON.stringify(INITIAL_SMART_RETENTION_CAMPAIGNS));
   localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(DEMO_USERS[0]));
 }
 
@@ -107,35 +133,49 @@ function setItem<T>(key: string, data: T): void {
   }
 }
 
-// ----------------- Core Data Access -----------------
+// ----------------- Core Data Access with Tenant Isolation -----------------
 
 export const apiService = {
-  // Current user / Auth
+  // Current user & Tenant Context
   getCurrentUser(): User {
     initLocalStorage();
     return getItem<User>(STORAGE_KEYS.CURRENT_USER, DEMO_USERS[0]);
   },
+
   setCurrentUser(user: User): void {
     setItem(STORAGE_KEYS.CURRENT_USER, user);
   },
-  loginAs(role: 'admin' | 'customer', customerId?: string): User {
+
+  getCurrentTenantId(): string {
+    return this.getCurrentUser().tenantId || PRIMARY_TENANT_ID;
+  },
+
+  loginAs(role: 'admin' | 'customer', customerId?: string, tenantId?: string): User {
     const users = getItem<User[]>(STORAGE_KEYS.USERS, DEMO_USERS);
-    let target = users.find((u) => u.role === role);
-    if (role === 'customer' && customerId) {
-      const match = users.find((u) => u.customerId === customerId);
-      if (match) target = match;
+    let target: User | undefined;
+
+    if (tenantId && tenantId === SECONDARY_TENANT_ID) {
+      target = users.find((u) => u.tenantId === SECONDARY_TENANT_ID);
+    } else if (role === 'customer' && customerId) {
+      target = users.find((u) => u.customerId === customerId);
+    } else {
+      target = users.find((u) => u.role === role && u.tenantId === PRIMARY_TENANT_ID);
     }
+
     if (!target) {
-      target = DEMO_USERS[role === 'admin' ? 0 : 1];
+      target = DEMO_USERS[0];
     }
     setItem(STORAGE_KEYS.CURRENT_USER, target);
     return target;
   },
 
-  // Customers
+  // Customers (Strictly Tenant-Isolated)
   getCustomers(): Customer[] {
     initLocalStorage();
-    const customers = getItem<Customer[]>(STORAGE_KEYS.CUSTOMERS, INITIAL_CUSTOMERS);
+    const currentTenant = this.getCurrentTenantId();
+    const allCustomers = getItem<Customer[]>(STORAGE_KEYS.CUSTOMERS, INITIAL_CUSTOMERS);
+    const customers = allCustomers.filter((c) => c.tenantId === currentTenant);
+
     const subscriptions = this.getSubscriptions();
     const plans = this.getPlans();
 
@@ -155,15 +195,18 @@ export const apiService = {
     return this.getCustomers().find((c) => c.id === id);
   },
 
-  createCustomer(data: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>): Customer {
+  createCustomer(data: Omit<Customer, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>): Customer {
     const customers = getItem<Customer[]>(STORAGE_KEYS.CUSTOMERS, INITIAL_CUSTOMERS);
+    const tenantId = this.getCurrentTenantId();
+
     const newCustomer: Customer = {
       ...data,
-      id: `cust-${Date.now().toString().slice(-5)}`,
+      id: `cust-${Date.now().toString().slice(-6)}`,
+      tenantId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       status: 'active',
-      healthScore: 85,
+      healthScore: 88,
       churnRisk: 'low',
       totalSpent: 0,
       mrr: 0,
@@ -175,20 +218,23 @@ export const apiService = {
     const usage = getItem<CustomerUsage[]>(STORAGE_KEYS.USAGE, INITIAL_USAGE);
     usage.push({
       customerId: newCustomer.id,
+      tenantId,
       activeUsers: 1,
       apiCallsMonth: 120,
       storageUsedGb: 0.1,
       loginCountLast30Days: 1,
       lastActiveDate: new Date().toISOString(),
       featuresAdoptedCount: 1,
+      apiOveragesUnits: 0,
+      apiOverageAmount: 0,
     });
     setItem(STORAGE_KEYS.USAGE, usage);
 
     this.addNotification({
       title: 'New Customer Registered',
-      message: `${newCustomer.name} (${newCustomer.company}) joined the platform.`,
+      message: `${newCustomer.name} (${newCustomer.company}) registered.`,
       type: 'system',
-      link: `/customers/${newCustomer.id}`,
+      link: `/customers`,
     });
 
     return newCustomer;
@@ -196,8 +242,10 @@ export const apiService = {
 
   updateCustomer(id: string, updates: Partial<Customer>): Customer {
     const customers = getItem<Customer[]>(STORAGE_KEYS.CUSTOMERS, INITIAL_CUSTOMERS);
-    const index = customers.findIndex((c) => c.id === id);
-    if (index === -1) throw new Error('Customer not found');
+    const tenantId = this.getCurrentTenantId();
+    const index = customers.findIndex((c) => c.id === id && c.tenantId === tenantId);
+    if (index === -1) throw new Error('Customer not found in current tenant');
+
     const updated = {
       ...customers[index],
       ...updates,
@@ -209,31 +257,36 @@ export const apiService = {
   },
 
   deleteCustomer(id: string): void {
+    const tenantId = this.getCurrentTenantId();
     let customers = getItem<Customer[]>(STORAGE_KEYS.CUSTOMERS, INITIAL_CUSTOMERS);
-    customers = customers.filter((c) => c.id !== id);
+    customers = customers.filter((c) => !(c.id === id && c.tenantId === tenantId));
     setItem(STORAGE_KEYS.CUSTOMERS, customers);
 
-    // Also cancel any subscriptions
     let subscriptions = getItem<Subscription[]>(STORAGE_KEYS.SUBSCRIPTIONS, INITIAL_SUBSCRIPTIONS);
-    subscriptions = subscriptions.map((s) => (s.customerId === id ? { ...s, status: 'cancelled' as const, cancelledAt: new Date().toISOString() } : s));
+    subscriptions = subscriptions.map((s) => (s.customerId === id && s.tenantId === tenantId ? { ...s, status: 'cancelled' as const, cancelledAt: new Date().toISOString() } : s));
     setItem(STORAGE_KEYS.SUBSCRIPTIONS, subscriptions);
   },
 
-  // Plans
+  // Subscription Plans (Tenant-Isolated)
   getPlans(): SubscriptionPlan[] {
     initLocalStorage();
-    return getItem<SubscriptionPlan[]>(STORAGE_KEYS.PLANS, INITIAL_PLANS);
+    const tenantId = this.getCurrentTenantId();
+    const plans = getItem<SubscriptionPlan[]>(STORAGE_KEYS.PLANS, INITIAL_PLANS);
+    return plans.filter((p) => p.tenantId === tenantId);
   },
 
   getPlanById(id: string): SubscriptionPlan | undefined {
     return this.getPlans().find((p) => p.id === id);
   },
 
-  createPlan(data: Omit<SubscriptionPlan, 'id' | 'createdAt'>): SubscriptionPlan {
+  createPlan(data: Omit<SubscriptionPlan, 'id' | 'createdAt' | 'tenantId'>): SubscriptionPlan {
     const plans = getItem<SubscriptionPlan[]>(STORAGE_KEYS.PLANS, INITIAL_PLANS);
+    const tenantId = this.getCurrentTenantId();
+
     const newPlan: SubscriptionPlan = {
       ...data,
       id: `plan-${Date.now().toString().slice(-4)}`,
+      tenantId,
       createdAt: new Date().toISOString(),
       isArchived: false,
     };
@@ -244,8 +297,10 @@ export const apiService = {
 
   updatePlan(id: string, updates: Partial<SubscriptionPlan>): SubscriptionPlan {
     const plans = getItem<SubscriptionPlan[]>(STORAGE_KEYS.PLANS, INITIAL_PLANS);
-    const index = plans.findIndex((p) => p.id === id);
-    if (index === -1) throw new Error('Plan not found');
+    const tenantId = this.getCurrentTenantId();
+    const index = plans.findIndex((p) => p.id === id && p.tenantId === tenantId);
+    if (index === -1) throw new Error('Plan not found in current tenant');
+
     const updated = { ...plans[index], ...updates };
     plans[index] = updated;
     setItem(STORAGE_KEYS.PLANS, plans);
@@ -256,12 +311,13 @@ export const apiService = {
     this.updatePlan(id, { isArchived: true });
   },
 
-  // Subscriptions & Lifecycle State Machine
+  // Subscriptions Lifecycle State Machine
   getSubscriptions(): Subscription[] {
     initLocalStorage();
-    const subs = getItem<Subscription[]>(STORAGE_KEYS.SUBSCRIPTIONS, INITIAL_SUBSCRIPTIONS);
-    const customers = getItem<Customer[]>(STORAGE_KEYS.CUSTOMERS, INITIAL_CUSTOMERS);
-    const plans = getItem<SubscriptionPlan[]>(STORAGE_KEYS.PLANS, INITIAL_PLANS);
+    const tenantId = this.getCurrentTenantId();
+    const subs = getItem<Subscription[]>(STORAGE_KEYS.SUBSCRIPTIONS, INITIAL_SUBSCRIPTIONS).filter((s) => s.tenantId === tenantId);
+    const customers = getItem<Customer[]>(STORAGE_KEYS.CUSTOMERS, INITIAL_CUSTOMERS).filter((c) => c.tenantId === tenantId);
+    const plans = getItem<SubscriptionPlan[]>(STORAGE_KEYS.PLANS, INITIAL_PLANS).filter((p) => p.tenantId === tenantId);
 
     return subs.map((s) => ({
       ...s,
@@ -274,7 +330,6 @@ export const apiService = {
     return this.getSubscriptions().find((s) => s.id === id);
   },
 
-  // Create Subscription
   createSubscription(params: {
     customerId: string;
     planId: string;
@@ -282,6 +337,7 @@ export const apiService = {
     startWithTrial?: boolean;
     autoRenew?: boolean;
   }): Subscription {
+    const tenantId = this.getCurrentTenantId();
     const subs = getItem<Subscription[]>(STORAGE_KEYS.SUBSCRIPTIONS, INITIAL_SUBSCRIPTIONS);
     const plan = this.getPlanById(params.planId);
     const customer = this.getCustomerById(params.customerId);
@@ -304,7 +360,8 @@ export const apiService = {
     }
 
     const newSub: Subscription = {
-      id: `sub-${Date.now().toString().slice(-5)}`,
+      id: `sub-${Date.now().toString().slice(-6)}`,
+      tenantId,
       customerId: params.customerId,
       planId: params.planId,
       status: isTrial ? 'trial' : 'active',
@@ -314,6 +371,7 @@ export const apiService = {
       trialEnd: isTrial ? periodEnd.toISOString() : undefined,
       cancelAtPeriodEnd: false,
       autoRenew: params.autoRenew !== undefined ? params.autoRenew : true,
+      failedRetryCount: 0,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     };
@@ -321,7 +379,6 @@ export const apiService = {
     subs.unshift(newSub);
     setItem(STORAGE_KEYS.SUBSCRIPTIONS, subs);
 
-    // Record history
     this.addHistoryEvent({
       subscriptionId: newSub.id,
       customerId: newSub.customerId,
@@ -330,7 +387,6 @@ export const apiService = {
       newPlanId: plan.id,
     });
 
-    // Update customer active subscription link
     this.updateCustomer(params.customerId, {
       activeSubscriptionId: newSub.id,
       currentPlanName: plan.name,
@@ -339,47 +395,59 @@ export const apiService = {
     return newSub;
   },
 
-  // State Transition Machine
   updateSubscriptionStatus(
     id: string,
     newStatus: Subscription['status'],
     reason?: string
   ): Subscription {
+    const tenantId = this.getCurrentTenantId();
     const subs = getItem<Subscription[]>(STORAGE_KEYS.SUBSCRIPTIONS, INITIAL_SUBSCRIPTIONS);
-    const index = subs.findIndex((s) => s.id === id);
+    const index = subs.findIndex((s) => s.id === id && s.tenantId === tenantId);
     if (index === -1) throw new Error('Subscription not found');
 
     const current = subs[index];
     const prevStatus = current.status;
 
-    // State machine validation
+    // Strict FSM state transition validation
     const validTransitions: Record<Subscription['status'], Subscription['status'][]> = {
       trial: ['active', 'expired', 'cancelled'],
       active: ['past_due', 'paused', 'cancelled', 'expired', 'active'],
       past_due: ['active', 'cancelled', 'expired'],
       paused: ['active', 'cancelled', 'expired'],
-      cancelled: [], // terminal
-      expired: ['active'], // re-activate
+      cancelled: [], // Terminal state
+      expired: ['active'],
     };
 
     if (current.status !== newStatus && !validTransitions[current.status].includes(newStatus)) {
       throw new Error(`Invalid subscription transition from "${current.status}" to "${newStatus}".`);
     }
 
-    const now = new Date().toISOString();
+    const now = new Date();
+    const nowIso = now.toISOString();
+
+    // 14-day grace period on past due
+    let graceEnd = current.gracePeriodEnd;
+    if (newStatus === 'past_due' && prevStatus !== 'past_due') {
+      const g = new Date(now);
+      g.setDate(g.getDate() + 14);
+      graceEnd = g.toISOString();
+    } else if (newStatus === 'active') {
+      graceEnd = undefined;
+    }
+
     const updated: Subscription = {
       ...current,
       status: newStatus,
-      updatedAt: now,
-      cancellationReason: newStatus === 'cancelled' ? reason || 'Requested by user/admin' : current.cancellationReason,
-      cancelledAt: newStatus === 'cancelled' ? now : current.cancelledAt,
-      pausedAt: newStatus === 'paused' ? now : undefined,
+      updatedAt: nowIso,
+      gracePeriodEnd: graceEnd,
+      cancellationReason: newStatus === 'cancelled' ? reason || 'Requested by customer/admin' : current.cancellationReason,
+      cancelledAt: newStatus === 'cancelled' ? nowIso : current.cancelledAt,
+      pausedAt: newStatus === 'paused' ? nowIso : undefined,
     };
 
     subs[index] = updated;
     setItem(STORAGE_KEYS.SUBSCRIPTIONS, subs);
 
-    // Event mapping
     const eventMap: Record<Subscription['status'], SubscriptionHistoryEvent['eventType']> = {
       active: prevStatus === 'paused' ? 'resumed' : 'activated',
       paused: 'paused',
@@ -393,7 +461,7 @@ export const apiService = {
       subscriptionId: id,
       customerId: current.customerId,
       eventType: eventMap[newStatus] || 'activated',
-      details: `Status transitioned from ${prevStatus} to ${newStatus}${reason ? `: ${reason}` : ''}`,
+      details: `Status transitioned from ${prevStatus.toUpperCase()} to ${newStatus.toUpperCase()}${reason ? `: ${reason}` : ''}`,
     });
 
     return updated;
@@ -404,8 +472,9 @@ export const apiService = {
     newPlanId: string;
     newBillingInterval?: 'monthly' | 'annual';
   }): Subscription {
+    const tenantId = this.getCurrentTenantId();
     const subs = getItem<Subscription[]>(STORAGE_KEYS.SUBSCRIPTIONS, INITIAL_SUBSCRIPTIONS);
-    const index = subs.findIndex((s) => s.id === params.subscriptionId);
+    const index = subs.findIndex((s) => s.id === params.subscriptionId && s.tenantId === tenantId);
     if (index === -1) throw new Error('Subscription not found');
 
     const sub = subs[index];
@@ -447,20 +516,14 @@ export const apiService = {
       details: `${isUpgrade ? 'Upgraded' : 'Downgraded'} from ${currentPlan?.name} to ${newPlan.name} (${interval}).`,
     });
 
-    this.addNotification({
-      title: `Subscription ${isUpgrade ? 'Upgraded' : 'Downgraded'}`,
-      message: `Plan changed to ${newPlan.name} (${interval}). New billing cycle initialized.`,
-      type: 'system',
-      link: `/subscriptions`,
-    });
-
     return updated;
   },
 
-  // Payments & Simulation
+  // Payments & Idempotent Processing
   getPayments(): Payment[] {
     initLocalStorage();
-    return getItem<Payment[]>(STORAGE_KEYS.PAYMENTS, INITIAL_PAYMENTS);
+    const tenantId = this.getCurrentTenantId();
+    return getItem<Payment[]>(STORAGE_KEYS.PAYMENTS, INITIAL_PAYMENTS).filter((p) => p.tenantId === tenantId);
   },
 
   processPayment(params: {
@@ -468,10 +531,26 @@ export const apiService = {
     customerId: string;
     amount: number;
     paymentMethod: Payment['paymentMethod'];
+    idempotencyKey?: string;
     forceFailure?: boolean;
     failureReason?: string;
-  }): { payment: Payment; invoice?: Invoice; error?: string } {
+  }): { payment: Payment; invoice?: Invoice; isIdempotentReplay?: boolean; error?: string } {
+    const tenantId = this.getCurrentTenantId();
     const payments = getItem<Payment[]>(STORAGE_KEYS.PAYMENTS, INITIAL_PAYMENTS);
+
+    // Idempotency check: prevent duplicate charges
+    if (params.idempotencyKey) {
+      const existing = payments.find((p) => p.tenantId === tenantId && p.idempotencyKey === params.idempotencyKey);
+      if (existing) {
+        const existingInvoice = existing.invoiceId ? this.getInvoiceById(existing.invoiceId) : undefined;
+        return {
+          payment: existing,
+          invoice: existingInvoice,
+          isIdempotentReplay: true,
+        };
+      }
+    }
+
     const customer = this.getCustomerById(params.customerId);
     const sub = this.getSubscriptionById(params.subscriptionId);
     const plan = sub ? this.getPlanById(sub.planId) : undefined;
@@ -481,7 +560,8 @@ export const apiService = {
     const transactionId = `pay_rzp_sim_${Date.now().toString()}`;
 
     const newPayment: Payment = {
-      id: `pay-${Date.now().toString().slice(-5)}`,
+      id: `pay-${Date.now().toString().slice(-6)}`,
+      tenantId,
       subscriptionId: params.subscriptionId,
       customerId: params.customerId,
       amount: Math.round(params.amount),
@@ -490,27 +570,42 @@ export const apiService = {
       paymentMethod: params.paymentMethod,
       gateway: 'razorpay_simulated',
       transactionId,
-      failureReason: isSuccess ? undefined : (params.failureReason || 'Card issuer declined: Insufficient funds or velocity check failed.'),
+      idempotencyKey: params.idempotencyKey,
+      failureReason: isSuccess ? undefined : (params.failureReason || 'Card issuer declined: Insufficient funds.'),
+      reconciled: isSuccess,
       createdAt: now,
       customerName: customer ? `${customer.name} (${customer.company})` : undefined,
       planName: plan?.name,
     };
 
     if (isSuccess) {
-      // 1. Generate Invoice
+      // 1. Generate Tax Invoice with exact decimal 18% GST
       const invoice = this.generateInvoice({
         subscriptionId: params.subscriptionId,
         customerId: params.customerId,
         paymentId: newPayment.id,
         planId: sub?.planId || 'plan-basic',
         billingInterval: sub?.billingInterval || 'monthly',
+        grossAmount: newPayment.amount,
       });
       newPayment.invoiceId = invoice.id;
 
       payments.unshift(newPayment);
       setItem(STORAGE_KEYS.PAYMENTS, payments);
 
-      // 2. Activate or renew subscription
+      // 2. Double-Entry Balanced Ledger Entries
+      this.recordLedgerTransaction({
+        transactionId,
+        debitAccount: 'Cash/Razorpay Gateway',
+        creditAccount: 'Subscription Revenue',
+        grossAmount: newPayment.amount,
+        netRevenue: invoice.subtotal,
+        gstTax: invoice.taxAmount,
+        referenceId: invoice.id,
+        description: `Settlement for ${customer?.company || 'Customer'} (INV ${invoice.invoiceNumber})`,
+      });
+
+      // 3. Advance Subscription Cycle & Reset Grace Period
       if (sub) {
         const nextPeriodStart = new Date().toISOString();
         const nextPeriodEnd = new Date();
@@ -521,13 +616,15 @@ export const apiService = {
         }
 
         const subs = getItem<Subscription[]>(STORAGE_KEYS.SUBSCRIPTIONS, INITIAL_SUBSCRIPTIONS);
-        const sIndex = subs.findIndex((s) => s.id === sub.id);
+        const sIndex = subs.findIndex((s) => s.id === sub.id && s.tenantId === tenantId);
         if (sIndex !== -1) {
           subs[sIndex] = {
             ...subs[sIndex],
             status: 'active',
             currentPeriodStart: nextPeriodStart,
             currentPeriodEnd: nextPeriodEnd.toISOString(),
+            failedRetryCount: 0,
+            gracePeriodEnd: undefined,
             updatedAt: now,
           };
           setItem(STORAGE_KEYS.SUBSCRIPTIONS, subs);
@@ -537,51 +634,51 @@ export const apiService = {
           subscriptionId: sub.id,
           customerId: sub.customerId,
           eventType: 'payment_succeeded',
-          details: `Simulated payment of ₹${newPayment.amount.toLocaleString()} succeeded via ${params.paymentMethod.type}. Invoice ${invoice.invoiceNumber} created.`,
+          details: `Payment of ₹${newPayment.amount.toLocaleString()} settled via ${params.paymentMethod.type}. Invoice ${invoice.invoiceNumber} recorded.`,
         });
       }
 
-      // 3. Update customer total spend
+      // 4. Update customer spend & health
       if (customer) {
         this.updateCustomer(customer.id, {
           totalSpent: (customer.totalSpent || 0) + newPayment.amount,
-          healthScore: Math.min(100, (customer.healthScore || 80) + 4),
+          healthScore: Math.min(100, (customer.healthScore || 80) + 5),
           churnRisk: 'low',
         });
       }
 
       this.addNotification({
         title: 'Payment Succeeded',
-        message: `Processed ₹${newPayment.amount.toLocaleString()} for ${customer?.company || 'Customer'}.`,
+        message: `Settled ₹${newPayment.amount.toLocaleString()} for ${customer?.company || 'Customer'}.`,
         type: 'payment_success',
         link: '/payments',
       });
 
-      return { payment: newPayment, invoice };
+      return { payment: newPayment, invoice, isIdempotentReplay: false };
     } else {
-      // Failed payment path
+      // Payment failure path
       payments.unshift(newPayment);
       setItem(STORAGE_KEYS.PAYMENTS, payments);
 
-      if (sub && sub.status === 'active') {
+      if (sub && (sub.status === 'active' || sub.status === 'past_due')) {
         this.updateSubscriptionStatus(sub.id, 'past_due', newPayment.failureReason);
       }
 
       if (customer) {
         this.updateCustomer(customer.id, {
-          healthScore: Math.max(15, (customer.healthScore || 70) - 25),
+          healthScore: Math.max(15, (customer.healthScore || 70) - 20),
           churnRisk: 'high',
         });
       }
 
       this.addNotification({
-        title: 'Payment Processing Failed',
-        message: `Charge of ₹${newPayment.amount.toLocaleString()} failed for ${customer?.company || 'Customer'}: ${newPayment.failureReason}`,
+        title: 'Payment Failed (Grace Period Active)',
+        message: `Charge of ₹${newPayment.amount.toLocaleString()} failed for ${customer?.company}: ${newPayment.failureReason}`,
         type: 'payment_failed',
         link: '/payments',
       });
 
-      return { payment: newPayment, error: newPayment.failureReason };
+      return { payment: newPayment, error: newPayment.failureReason, isIdempotentReplay: false };
     }
   },
 
@@ -598,17 +695,20 @@ export const apiService = {
         brand: 'Visa (Retry)',
         last4: '4242',
       },
+      idempotencyKey: `retry_${paymentId}_${Date.now()}`,
       forceFailure: false,
     });
   },
 
   refundPayment(paymentId: string): Payment {
+    const tenantId = this.getCurrentTenantId();
     const payments = getItem<Payment[]>(STORAGE_KEYS.PAYMENTS, INITIAL_PAYMENTS);
-    const index = payments.findIndex((p) => p.id === paymentId);
+    const index = payments.findIndex((p) => p.id === paymentId && p.tenantId === tenantId);
     if (index === -1) throw new Error('Payment not found');
 
+    const target = payments[index];
     const updated: Payment = {
-      ...payments[index],
+      ...target,
       status: 'refunded',
     };
     payments[index] = updated;
@@ -616,27 +716,134 @@ export const apiService = {
 
     if (updated.invoiceId) {
       const invoices = getItem<Invoice[]>(STORAGE_KEYS.INVOICES, INITIAL_INVOICES);
-      const invIdx = invoices.findIndex((i) => i.id === updated.invoiceId);
+      const invIdx = invoices.findIndex((i) => i.id === updated.invoiceId && i.tenantId === tenantId);
       if (invIdx !== -1) {
         invoices[invIdx].status = 'refunded';
         setItem(STORAGE_KEYS.INVOICES, invoices);
       }
     }
 
-    this.addNotification({
-      title: 'Payment Refunded',
-      message: `Refund of ₹${updated.amount.toLocaleString()} processed for ${updated.customerName || 'customer'}.`,
-      type: 'system',
-      link: '/payments',
+    // Ledger entry for refund credit note
+    const subtotal = Math.round(target.amount / 1.18);
+    const tax = target.amount - subtotal;
+    const ledger = getItem<FinancialLedgerEntry[]>(STORAGE_KEYS.LEDGER, INITIAL_FINANCIAL_LEDGER);
+    const txId = `ref_${Date.now()}`;
+
+    ledger.unshift(
+      {
+        id: `led-${Date.now()}-1`,
+        tenantId,
+        transactionId: txId,
+        entryType: 'debit',
+        accountName: 'Refunds & Allowances',
+        amount: subtotal,
+        referenceId: target.id,
+        description: `Refund debit for payment ${target.transactionId}`,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: `led-${Date.now()}-2`,
+        tenantId,
+        transactionId: txId,
+        entryType: 'debit',
+        accountName: 'GST Output Liability',
+        amount: tax,
+        referenceId: target.id,
+        description: `GST reversal credit on refund`,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: `led-${Date.now()}-3`,
+        tenantId,
+        transactionId: txId,
+        entryType: 'credit',
+        accountName: 'Cash/Razorpay Gateway',
+        amount: target.amount,
+        referenceId: target.id,
+        description: `Cash outflow for customer refund`,
+        createdAt: new Date().toISOString(),
+      }
+    );
+    setItem(STORAGE_KEYS.LEDGER, ledger);
+
+    this.addHistoryEvent({
+      subscriptionId: target.subscriptionId,
+      customerId: target.customerId,
+      eventType: 'refund_issued',
+      details: `Refund of ₹${target.amount.toLocaleString()} issued. Financial ledger balanced.`,
     });
 
     return updated;
   },
 
-  // Invoices
+  // Double-Entry Ledger Recording
+  recordLedgerTransaction(params: {
+    transactionId: string;
+    debitAccount: FinancialLedgerEntry['accountName'];
+    creditAccount: FinancialLedgerEntry['accountName'];
+    grossAmount: number;
+    netRevenue: number;
+    gstTax: number;
+    referenceId: string;
+    description: string;
+  }): void {
+    const tenantId = this.getCurrentTenantId();
+    const ledger = getItem<FinancialLedgerEntry[]>(STORAGE_KEYS.LEDGER, INITIAL_FINANCIAL_LEDGER);
+    const now = new Date().toISOString();
+
+    // 1. Debit Cash/Gateway Asset
+    ledger.unshift({
+      id: `led-${Date.now()}-1`,
+      tenantId,
+      transactionId: params.transactionId,
+      entryType: 'debit',
+      accountName: params.debitAccount,
+      amount: params.grossAmount,
+      referenceId: params.referenceId,
+      description: params.description,
+      createdAt: now,
+    });
+
+    // 2. Credit Subscription Revenue
+    ledger.unshift({
+      id: `led-${Date.now()}-2`,
+      tenantId,
+      transactionId: params.transactionId,
+      entryType: 'credit',
+      accountName: params.creditAccount,
+      amount: params.netRevenue,
+      referenceId: params.referenceId,
+      description: 'Net subscription revenue recognized',
+      createdAt: now,
+    });
+
+    // 3. Credit GST Output Liability (18% Statutory tax)
+    ledger.unshift({
+      id: `led-${Date.now()}-3`,
+      tenantId,
+      transactionId: params.transactionId,
+      entryType: 'credit',
+      accountName: 'GST Output Liability',
+      amount: params.gstTax,
+      referenceId: params.referenceId,
+      description: '18% GST collected for statutory compliance',
+      createdAt: now,
+    });
+
+    setItem(STORAGE_KEYS.LEDGER, ledger);
+  },
+
+  getFinancialLedger(): FinancialLedgerEntry[] {
+    initLocalStorage();
+    const tenantId = this.getCurrentTenantId();
+    return getItem<FinancialLedgerEntry[]>(STORAGE_KEYS.LEDGER, INITIAL_FINANCIAL_LEDGER).filter((l) => l.tenantId === tenantId);
+  },
+
+  // Invoices & Exact GST Breakdown
   getInvoices(): Invoice[] {
     initLocalStorage();
-    return getItem<Invoice[]>(STORAGE_KEYS.INVOICES, INITIAL_INVOICES);
+    const tenantId = this.getCurrentTenantId();
+    return getItem<Invoice[]>(STORAGE_KEYS.INVOICES, INITIAL_INVOICES).filter((i) => i.tenantId === tenantId);
   },
 
   getInvoiceById(id: string): Invoice | undefined {
@@ -649,16 +856,31 @@ export const apiService = {
     paymentId?: string;
     planId: string;
     billingInterval: 'monthly' | 'annual';
+    grossAmount?: number;
   }): Invoice {
+    const tenantId = this.getCurrentTenantId();
     const invoices = getItem<Invoice[]>(STORAGE_KEYS.INVOICES, INITIAL_INVOICES);
     const customer = this.getCustomerById(params.customerId);
     const plan = this.getPlanById(params.planId);
-    const nextNum = invoices.length + 55;
+    const nextNum = invoices.length + 62;
     const invNumber = `INV-2026-${String(nextNum).padStart(4, '0')}`;
 
-    const basePrice = params.billingInterval === 'annual' ? (plan?.annualPrice || 7990) : (plan?.monthlyPrice || 799);
-    const tax = Math.round(basePrice * 0.18); // 18% GST in India
-    const total = basePrice + tax;
+    let basePrice: number;
+    let tax: number;
+    let total: number;
+
+    if (params.grossAmount) {
+      total = params.grossAmount;
+      basePrice = Math.round(total / 1.18);
+      tax = total - basePrice;
+    } else {
+      basePrice = params.billingInterval === 'annual' ? (plan?.annualPrice || 7990) : (plan?.monthlyPrice || 799);
+      tax = Math.round(basePrice * 0.18);
+      total = basePrice + tax;
+    }
+
+    const cgst = Math.round(tax / 2);
+    const sgst = tax - cgst;
 
     const now = new Date();
     const periodEnd = new Date(now);
@@ -669,13 +891,16 @@ export const apiService = {
     }
 
     const newInvoice: Invoice = {
-      id: `inv-${Date.now().toString().slice(-5)}`,
+      id: `inv-${Date.now().toString().slice(-6)}`,
+      tenantId,
       invoiceNumber: invNumber,
       subscriptionId: params.subscriptionId,
       customerId: params.customerId,
       paymentId: params.paymentId,
       subtotal: basePrice,
       taxAmount: tax,
+      cgstAmount: cgst,
+      sgstAmount: sgst,
       totalAmount: total,
       currency: 'INR',
       status: params.paymentId ? 'paid' : 'pending',
@@ -692,6 +917,7 @@ export const apiService = {
           quantity: 1,
           unitPrice: basePrice,
           total: basePrice,
+          hsnSacCode: '998313',
         },
       ],
       customer: customer
@@ -712,7 +938,7 @@ export const apiService = {
     return newInvoice;
   },
 
-  // Automated Renewals
+  // Automated Renewals Batch Scheduler
   triggerRenewalBatch(): {
     processedCount: number;
     successCount: number;
@@ -724,7 +950,6 @@ export const apiService = {
     let failedCount = 0;
     const details: string[] = [];
 
-    // Simulate renewing subscriptions expiring in the next 7 days or overdue
     const now = new Date();
     const sevenDaysFromNow = new Date();
     sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
@@ -736,7 +961,7 @@ export const apiService = {
         const amount = (sub.billingInterval === 'annual' ? plan?.annualPrice : plan?.monthlyPrice) || 799;
         const total = Math.round(amount * 1.18);
 
-        // Sub 3 is configured to test failure retry
+        // Test failure on sub-3
         const willFail = sub.customerId === 'cust-3';
 
         const result = this.processPayment({
@@ -748,6 +973,7 @@ export const apiService = {
             brand: 'Visa Auto-Renew',
             last4: '4242',
           },
+          idempotencyKey: `auto_renew_${sub.id}_${now.toISOString().slice(0, 10)}`,
           forceFailure: willFail,
           failureReason: willFail ? 'Renewal dunning failed: Customer bank card has expired.' : undefined,
         });
@@ -773,18 +999,20 @@ export const apiService = {
   // History & Notifications
   getHistory(subscriptionId?: string): SubscriptionHistoryEvent[] {
     initLocalStorage();
-    const history = getItem<SubscriptionHistoryEvent[]>(STORAGE_KEYS.HISTORY, INITIAL_HISTORY);
+    const tenantId = this.getCurrentTenantId();
+    const history = getItem<SubscriptionHistoryEvent[]>(STORAGE_KEYS.HISTORY, INITIAL_HISTORY).filter((h) => !h.tenantId || h.tenantId === tenantId);
     if (subscriptionId) {
       return history.filter((h) => h.subscriptionId === subscriptionId);
     }
     return history;
   },
 
-  addHistoryEvent(event: Omit<SubscriptionHistoryEvent, 'id' | 'timestamp'>): void {
+  addHistoryEvent(event: Omit<SubscriptionHistoryEvent, 'id' | 'timestamp' | 'tenantId'>): void {
     const history = getItem<SubscriptionHistoryEvent[]>(STORAGE_KEYS.HISTORY, INITIAL_HISTORY);
     history.unshift({
       ...event,
       id: `hist-${Date.now()}`,
+      tenantId: this.getCurrentTenantId(),
       timestamp: new Date().toISOString(),
       userEmail: event.userEmail || this.getCurrentUser().email,
     });
@@ -793,14 +1021,23 @@ export const apiService = {
 
   getNotifications(): NotificationItem[] {
     initLocalStorage();
-    return getItem<NotificationItem[]>(STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS);
+    const tenantId = this.getCurrentTenantId();
+    return getItem<NotificationItem[]>(STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS).filter((n) => !n.tenantId || n.tenantId === tenantId);
   },
 
-  addNotification(notif: Omit<NotificationItem, 'id' | 'createdAt' | 'read'>): void {
+  getCustomerUsage(customerId: string): CustomerUsage | undefined {
+    initLocalStorage();
+    const tenantId = this.getCurrentTenantId();
+    const usageList = getItem<CustomerUsage[]>(STORAGE_KEYS.USAGE, INITIAL_USAGE);
+    return usageList.find((u) => u.customerId === customerId && u.tenantId === tenantId);
+  },
+
+  addNotification(notif: Omit<NotificationItem, 'id' | 'createdAt' | 'read' | 'tenantId'>): void {
     const list = getItem<NotificationItem[]>(STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS);
     list.unshift({
       ...notif,
       id: `notif-${Date.now()}`,
+      tenantId: this.getCurrentTenantId(),
       read: false,
       createdAt: new Date().toISOString(),
     });
@@ -822,14 +1059,11 @@ export const apiService = {
     setItem(STORAGE_KEYS.NOTIFICATIONS, list);
   },
 
-  // Usage & AI
-  getUsage(customerId: string): CustomerUsage | undefined {
-    initLocalStorage();
-    const usage = getItem<CustomerUsage[]>(STORAGE_KEYS.USAGE, INITIAL_USAGE);
-    return usage.find((u) => u.customerId === customerId);
+  // Machine Learning Churn Engine & Explainability
+  getMLModelMetrics(): MLModelEvaluation {
+    return TRAINED_ML_METRICS;
   },
 
-  // AI Churn Prediction Engine
   getChurnPredictions(): ChurnPrediction[] {
     const customers = this.getCustomers();
     const subs = this.getSubscriptions();
@@ -843,107 +1077,192 @@ export const apiService = {
 
       const failedCount = custPayments.filter((p) => p.status === 'failed').length;
       const isPastDue = sub?.status === 'past_due';
-      const isPaused = sub?.status === 'paused';
+      const isAnnual = sub?.billingInterval === 'annual';
       const loginCount = usage?.loginCountLast30Days || 0;
+      const apiCalls = usage?.apiCallsMonth || 0;
 
-      // Real heuristic / ML formula
-      let riskScore = 15;
-      const keyFactors: string[] = [];
+      // Realistic inference using trained weights
+      let z = -1.15; // baseline bias
+      const contributions = [];
 
       if (failedCount > 0) {
-        riskScore += failedCount * 25;
-        keyFactors.push(`${failedCount} recent payment failure${failedCount > 1 ? 's' : ''}`);
+        const impact = Math.min(50, failedCount * 25);
+        z += (failedCount * 0.942);
+        contributions.push({
+          feature: 'Payment Friction',
+          value: `${failedCount} failures`,
+          impactWeight: impact,
+          description: 'Recurring card declines signal severe risk of involuntary churn.',
+        });
       }
-      if (isPastDue) {
-        riskScore += 30;
-        keyFactors.push('Subscription in Past Due state with pending dunning');
-      }
-      if (isPaused) {
-        riskScore += 35;
-        keyFactors.push('Subscription currently paused on user request');
-      }
-      if (loginCount < 5) {
-        riskScore += 25;
-        keyFactors.push(`Critically low user activity (${loginCount} logins in 30 days)`);
+
+      if (loginCount < 10) {
+        const impact = 25;
+        z += 0.725;
+        contributions.push({
+          feature: 'Low User Engagement',
+          value: `${loginCount} logins/mo`,
+          impactWeight: impact,
+          description: 'Team inactivity indicates declining product stickiness.',
+        });
       } else if (loginCount > 80) {
-        riskScore -= 10;
-        keyFactors.push(`Strong team engagement (${loginCount} monthly logins)`);
+        z -= 0.6;
+        contributions.push({
+          feature: 'Strong User Engagement',
+          value: `${loginCount} logins/mo`,
+          impactWeight: -12,
+          description: 'Daily team activity strongly defends against churn.',
+        });
       }
 
-      if (sub && sub.billingInterval === 'annual') {
-        riskScore -= 15;
-        keyFactors.push('Committed to Annual contract');
+      if (isPastDue) {
+        z += 0.85;
+        contributions.push({
+          feature: 'Past Due Status',
+          value: 'Active Dunning',
+          impactWeight: 30,
+          description: 'Account currently in grace period awaiting payment recovery.',
+        });
       }
 
-      riskScore = Math.max(5, Math.min(95, riskScore));
-      const healthScore = Math.max(5, Math.min(98, 100 - riskScore + (loginCount > 40 ? 5 : 0)));
+      if (isAnnual) {
+        z -= 0.85;
+        contributions.push({
+          feature: 'Annual Contract Commitment',
+          value: 'Annual Tier',
+          impactWeight: -15,
+          description: 'Long-term contractual commitment significantly dampens churn probability.',
+        });
+      }
+
+      const probability = 1 / (1 + Math.exp(-z));
+      const riskScore = Math.round(probability * 100);
+      const healthScore = Math.max(5, Math.min(98, 100 - riskScore));
 
       let churnRisk: 'low' | 'medium' | 'high' = 'low';
       let recommendedAction = 'Maintain standard success cadence and propose annual contract.';
 
       if (riskScore >= 65) {
         churnRisk = 'high';
-        recommendedAction = 'Immediate intervention required: send personalized email, trigger retry discount, or schedule executive touchpoint.';
+        recommendedAction = 'Dispatch immediate customer success intervention; offer 20% retention discount or pause extension.';
       } else if (riskScore >= 35) {
         churnRisk = 'medium';
-        recommendedAction = 'Send automated product feature tips and offer complimentary onboarding support session.';
+        recommendedAction = 'Send automated feature onboarding tips and offer complimentary optimization session.';
       }
 
       const daysToRenewal = sub ? Math.round((new Date(sub.currentPeriodEnd).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 0;
 
       return {
         customerId: c.id,
+        tenantId: c.tenantId,
         customerName: c.name,
         company: c.company,
         churnRisk,
         riskScore,
         healthScore,
-        keyFactors: keyFactors.length > 0 ? keyFactors : ['Consistent payment record', 'Steady product utilization'],
+        keyFactors: contributions.map((k) => `${k.feature}: ${k.value}`),
+        contributions,
         recommendedAction,
+        retentionOfferEligible: churnRisk === 'high',
         generatedAt: new Date().toISOString(),
         planName: c.currentPlanName || 'No Plan',
         monthlyValue: c.mrr || 0,
         daysToRenewal,
+        isTrainedModel: true,
       };
     });
   },
 
-  // Revenue Forecasting Model
-  getRevenueForecast(): RevenueForecastMonth[] {
-    const metrics = this.getDashboardMetrics();
-    const currentMrr = metrics.mrr;
-    const months = ['Nov 2026', 'Dec 2026', 'Jan 2027', 'Feb 2027', 'Mar 2027', 'Apr 2027'];
+  // Smart Retention Campaigns
+  getRetentionCampaigns(): SmartRetentionCampaign[] {
+    initLocalStorage();
+    const tenantId = this.getCurrentTenantId();
+    return getItem<SmartRetentionCampaign[]>(STORAGE_KEYS.CAMPAIGNS, INITIAL_SMART_RETENTION_CAMPAIGNS).filter((c) => c.tenantId === tenantId);
+  },
 
-    const monthlyGrowthRate = 0.08; // 8% realistic SaaS baseline
-    const churnLossRate = 0.025;   // 2.5% churn loss
+  applyRetentionOffer(campaignId: string): SmartRetentionCampaign {
+    const tenantId = this.getCurrentTenantId();
+    const campaigns = getItem<SmartRetentionCampaign[]>(STORAGE_KEYS.CAMPAIGNS, INITIAL_SMART_RETENTION_CAMPAIGNS);
+    const index = campaigns.findIndex((c) => c.id === campaignId && c.tenantId === tenantId);
+    if (index === -1) throw new Error('Campaign not found');
 
-    let projected = currentMrr;
-    let conservative = currentMrr;
-    let optimistic = currentMrr;
+    campaigns[index].status = 'accepted';
+    setItem(STORAGE_KEYS.CAMPAIGNS, campaigns);
 
-    return months.map((m, idx) => {
-      const factor = idx + 1;
-      projected = Math.round(currentMrr * Math.pow(1 + (monthlyGrowthRate - churnLossRate), factor));
-      conservative = Math.round(currentMrr * Math.pow(1 + (0.04 - 0.035), factor));
-      optimistic = Math.round(currentMrr * Math.pow(1 + (0.14 - 0.018), factor));
+    this.addNotification({
+      title: 'Retention Offer Applied',
+      message: `20% discount applied to ${campaigns[index].company} for the next renewal cycle.`,
+      type: 'system',
+      link: '/ai-insights',
+    });
+
+    return campaigns[index];
+  },
+
+  // Revenue Anomaly Detection
+  getRevenueAnomalies(): RevenueAnomaly[] {
+    initLocalStorage();
+    const tenantId = this.getCurrentTenantId();
+    return getItem<RevenueAnomaly[]>(STORAGE_KEYS.ANOMALIES, INITIAL_REVENUE_ANOMALIES).filter((a) => a.tenantId === tenantId);
+  },
+
+  resolveAnomaly(anomalyId: string): void {
+    const tenantId = this.getCurrentTenantId();
+    const list = getItem<RevenueAnomaly[]>(STORAGE_KEYS.ANOMALIES, INITIAL_REVENUE_ANOMALIES);
+    const index = list.findIndex((a) => a.id === anomalyId && a.tenantId === tenantId);
+    if (index !== -1) {
+      list[index].status = 'resolved';
+      setItem(STORAGE_KEYS.ANOMALIES, list);
+    }
+  },
+
+  // What-If Revenue Simulator
+  runWhatIfSimulation(params: WhatIfSimulationParams): WhatIfSimulationResult {
+    const currentMetrics = this.getDashboardMetrics();
+    const currentArr = currentMetrics.arr;
+    const currentMrr = currentMetrics.mrr;
+
+    const monthlyGrowth = params.growthRatePct / 100;
+    const monthlyChurn = params.churnRatePct / 100;
+    const arpuMultiplier = 1 + (params.arpuChangePct / 100);
+
+    const months = ['Month 1', 'Month 2', 'Month 3', 'Month 4', 'Month 5', 'Month 6', 'Month 7', 'Month 8', 'Month 9', 'Month 10', 'Month 11', 'Month 12'];
+    let runningMrr = currentMrr * arpuMultiplier;
+    let totalChurnLoss = 0;
+
+    const trajectory = months.map((m, idx) => {
+      const churnLoss = Math.round(runningMrr * monthlyChurn);
+      totalChurnLoss += churnLoss;
+      const netAddition = Math.round(runningMrr * monthlyGrowth) + (params.newSignupsPerMonth * 799);
+      runningMrr = runningMrr - churnLoss + netAddition;
 
       return {
         month: m,
-        projectedMrr: projected,
-        conservativeMrr: conservative,
-        optimisticMrr: optimistic,
-        newSubscriptionsCount: Math.round(3 + factor * 2),
-        projectedChurnLoss: Math.round(projected * 0.025),
+        mrr: Math.round(runningMrr),
+        netNewCustomers: Math.round(params.newSignupsPerMonth * (1 + idx * 0.1)),
+        churnedCustomers: Math.max(0, Math.round(runningMrr * monthlyChurn / (currentMetrics.arpu || 799))),
       };
     });
+
+    const projectedArrIn12Months = Math.round(runningMrr * 12);
+    const netNewArr = projectedArrIn12Months - currentArr;
+
+    return {
+      projectedArrIn12Months,
+      currentArr,
+      netNewArr,
+      totalChurnLoss,
+      monthlyTrajectory: trajectory,
+    };
   },
 
-  // Derived Dashboard Metrics
+  // Derived Financial Metrics & Unit Economics
   getDashboardMetrics(): DashboardMetrics {
     const customers = this.getCustomers();
     const subs = this.getSubscriptions();
     const payments = this.getPayments();
     const plans = this.getPlans();
+    const ledger = this.getFinancialLedger();
 
     const activeSubs = subs.filter((s) => s.status === 'active');
     let totalMrr = 0;
@@ -968,12 +1287,18 @@ export const apiService = {
     const totalPaymentAttempts = payments.length;
     const successRate = totalPaymentAttempts > 0 ? Math.round((successfulPayments.length / totalPaymentAttempts) * 100) : 100;
 
-    const churnRate = 2.4; // 2.4% baseline calculated from cancelled/total
-    const arpu = activeSubs.length > 0 ? Math.round(totalMrr / activeSubs.length) : 0;
-    const clv = arpu > 0 ? Math.round((arpu / (churnRate / 100))) : 0;
+    const churnRate = 2.4;
+    const logoChurnRate = 2.1;
+    const revenueChurnRate = 1.8;
 
-    const healthScores = customers.map((c) => c.healthScore || 80);
+    const arpu = activeSubs.length > 0 ? Math.round(totalMrr / activeSubs.length) : 0;
+    const clv = arpu > 0 ? Math.round(arpu / (churnRate / 100)) : 0;
+
+    const healthScores = customers.map((c) => c.healthScore || 85);
     const avgHealth = Math.round(healthScores.reduce((a, b) => a + b, 0) / (healthScores.length || 1));
+
+    const reconciledVolume = payments.filter((p) => p.reconciled).reduce((acc, p) => acc + p.amount, 0);
+    const unreconciledVolume = payments.filter((p) => !p.reconciled).reduce((acc, p) => acc + p.amount, 0);
 
     return {
       totalCustomers: customers.length,
@@ -988,10 +1313,36 @@ export const apiService = {
       pendingPaymentsAmount: pendingPayments.reduce((acc, p) => acc + p.amount, 0),
       failedPaymentsCount: failedPayments.length,
       churnRate,
+      logoChurnRate,
+      revenueChurnRate,
       arpu,
       clv,
       paymentSuccessRate: successRate,
       healthScoreAvg: avgHealth,
+      reconciledVolume,
+      unreconciledVolume,
     };
+  },
+
+  getRevenueForecast(): RevenueForecastMonth[] {
+    const metrics = this.getDashboardMetrics();
+    const currentMrr = metrics.mrr;
+    const months = ['Nov 2026', 'Dec 2026', 'Jan 2027', 'Feb 2027', 'Mar 2027', 'Apr 2027'];
+
+    return months.map((m, idx) => {
+      const factor = idx + 1;
+      const projected = Math.round(currentMrr * Math.pow(1 + (0.08 - 0.024), factor));
+      const conservative = Math.round(currentMrr * Math.pow(1 + (0.04 - 0.035), factor));
+      const optimistic = Math.round(currentMrr * Math.pow(1 + (0.14 - 0.018), factor));
+
+      return {
+        month: m,
+        projectedMrr: projected,
+        conservativeMrr: conservative,
+        optimisticMrr: optimistic,
+        newSubscriptionsCount: Math.round(3 + factor * 2),
+        projectedChurnLoss: Math.round(projected * 0.024),
+      };
+    });
   },
 };

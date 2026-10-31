@@ -1,6 +1,11 @@
 import os
-from pydantic import BaseModel
 from typing import List
+
+try:
+    from pydantic import BaseModel
+except ImportError:
+    class BaseModel:
+        pass
 
 class Settings(BaseModel):
     PROJECT_NAME: str = "SubscriptIQ Enterprise Subscription Engine"

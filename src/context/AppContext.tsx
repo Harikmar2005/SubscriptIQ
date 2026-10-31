@@ -11,9 +11,15 @@ import {
   ChurnPrediction,
   RevenueForecastMonth,
   SubscriptionHistoryEvent,
+  FinancialLedgerEntry,
+  RevenueAnomaly,
+  SmartRetentionCampaign,
+  MLModelEvaluation,
+  WhatIfSimulationParams,
+  WhatIfSimulationResult,
 } from '../types';
 import { apiService, resetToSeedData } from '../services/api';
-import { INITIAL_CUSTOMERS } from '../services/mockData';
+import { INITIAL_CUSTOMERS, PRIMARY_TENANT_ID, SECONDARY_TENANT_ID } from '../services/mockData';
 
 export type ActiveTab =
   | 'dashboard'
@@ -37,6 +43,7 @@ interface Toast {
 
 interface AppContextType {
   currentUser: User;
+  currentTenantId: string;
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   customers: Customer[];
@@ -49,10 +56,15 @@ interface AppContextType {
   metrics: DashboardMetrics;
   churnPredictions: ChurnPrediction[];
   forecast: RevenueForecastMonth[];
+  financialLedger: FinancialLedgerEntry[];
+  revenueAnomalies: RevenueAnomaly[];
+  retentionCampaigns: SmartRetentionCampaign[];
+  mlModelMetrics: MLModelEvaluation;
   unreadNotifCount: number;
 
   // Actions
   switchRole: (role: 'admin' | 'customer', customerId?: string) => void;
+  switchTenant: (tenantId: string) => void;
   refreshData: () => void;
   resetAllDemoData: () => void;
 
@@ -82,11 +94,16 @@ interface AppContextType {
     paymentMethod: Payment['paymentMethod'];
     forceFailure?: boolean;
     failureReason?: string;
-  }) => { payment: Payment; invoice?: Invoice; error?: string };
+    idempotencyKey?: string;
+  }) => { payment: Payment; invoice?: Invoice; error?: string; isIdempotentReplay?: boolean };
   retryPayment: (paymentId: string) => { payment: Payment; invoice?: Invoice };
   refundPayment: (paymentId: string) => Payment;
 
   triggerRenewalBatch: () => { processedCount: number; successCount: number; failedCount: number; details: string[] };
+
+  resolveAnomaly: (anomalyId: string) => void;
+  applyRetentionOffer: (campaignId: string) => void;
+  runWhatIfSimulation: (params: WhatIfSimulationParams) => WhatIfSimulationResult;
 
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
@@ -105,6 +122,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User>(apiService.getCurrentUser());
+  const [currentTenantId, setCurrentTenantId] = useState<string>(apiService.getCurrentTenantId());
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
 
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -117,6 +135,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [metrics, setMetrics] = useState<DashboardMetrics>(apiService.getDashboardMetrics());
   const [churnPredictions, setChurnPredictions] = useState<ChurnPrediction[]>([]);
   const [forecast, setForecast] = useState<RevenueForecastMonth[]>([]);
+  const [financialLedger, setFinancialLedger] = useState<FinancialLedgerEntry[]>([]);
+  const [revenueAnomalies, setRevenueAnomalies] = useState<RevenueAnomaly[]>([]);
+  const [retentionCampaigns, setRetentionCampaigns] = useState<SmartRetentionCampaign[]>([]);
+  const [mlModelMetrics, setMlModelMetrics] = useState<MLModelEvaluation>(apiService.getMLModelMetrics());
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [isDemoRunning, setIsDemoRunning] = useState(false);
 
@@ -143,11 +165,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setMetrics(apiService.getDashboardMetrics());
     setChurnPredictions(apiService.getChurnPredictions());
     setForecast(apiService.getRevenueForecast());
+    setFinancialLedger(apiService.getFinancialLedger());
+    setRevenueAnomalies(apiService.getRevenueAnomalies());
+    setRetentionCampaigns(apiService.getRetentionCampaigns());
+    setMlModelMetrics(apiService.getMLModelMetrics());
+    setCurrentTenantId(apiService.getCurrentTenantId());
   }, []);
 
   useEffect(() => {
     refreshData();
   }, [refreshData]);
+
+  const switchTenant = (tenantId: string) => {
+    const user = apiService.loginAs(currentUser.role, currentUser.customerId, tenantId);
+    setCurrentUser(user);
+    setCurrentTenantId(tenantId);
+    refreshData();
+    showToast(
+      'info',
+      'Tenant Switched',
+      tenantId === SECONDARY_TENANT_ID
+        ? 'Switched to Tenant: Zenith Global Aerospace (Isolated Tenant Sandbox)'
+        : 'Switched to Tenant: SubscriptIQ India (Production Tenant)'
+    );
+  };
 
   const switchRole = (role: 'admin' | 'customer', customerId?: string) => {
     const user = apiService.loginAs(role, customerId);
@@ -296,6 +337,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('info', 'Notifications Cleared', 'All alerts marked as read.');
   };
 
+  const handleResolveAnomaly = (anomalyId: string) => {
+    apiService.resolveAnomaly(anomalyId);
+    refreshData();
+    showToast('success', 'Anomaly Status Updated', 'Anomaly investigated and marked resolved.');
+  };
+
+  const handleApplyRetentionOffer = (campaignId: string) => {
+    apiService.applyRetentionOffer(campaignId);
+    refreshData();
+    showToast('success', 'Retention Offer Activated', '20% discount coupon applied to upcoming renewal invoice.');
+  };
+
+  const handleRunWhatIfSimulation = (params: WhatIfSimulationParams): WhatIfSimulationResult => {
+    return apiService.runWhatIfSimulation(params);
+  };
+
   // Hackathon Workflow Automated Step Execution (Steps 1 to 15)
   const runHackathonDemoStep = async (stepNumber: number) => {
     setIsDemoRunning(true);
@@ -393,6 +450,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     <AppContext.Provider
       value={{
         currentUser,
+        currentTenantId,
         activeTab,
         setActiveTab,
         customers,
@@ -405,9 +463,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         metrics,
         churnPredictions,
         forecast,
+        financialLedger,
+        revenueAnomalies,
+        retentionCampaigns,
+        mlModelMetrics,
         unreadNotifCount,
 
         switchRole,
+        switchTenant,
         refreshData,
         resetAllDemoData,
 
@@ -428,6 +491,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         refundPayment: handleRefundPayment,
 
         triggerRenewalBatch: handleTriggerRenewalBatch,
+
+        resolveAnomaly: handleResolveAnomaly,
+        applyRetentionOffer: handleApplyRetentionOffer,
+        runWhatIfSimulation: handleRunWhatIfSimulation,
 
         markNotificationRead: handleMarkNotifRead,
         markAllNotificationsRead: handleMarkAllNotifRead,

@@ -1,4 +1,7 @@
-import pytest
+try:
+    import pytest
+except ImportError:
+    pytest = None
 from app.ml.churn_model import ChurnPredictionEngine
 
 def test_churn_prediction_high_risk():

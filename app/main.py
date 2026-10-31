@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from app.database.session import engine, Base
 from app.core.config import settings
-from app.ml.churn_model import ChurnPredictionEngine
+from app.api.v1 import api_v1_router
 
 # Initialize tables
 Base.metadata.create_all(bind=engine)
@@ -23,7 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-churn_engine = ChurnPredictionEngine()
+app.include_router(api_v1_router, prefix="/api/v1")
 
 @app.get("/")
 def root():
@@ -42,7 +42,3 @@ def healthz():
         "payment_gateway": "Razorpay Test Simulation",
         "scheduler": "Celery Beat Active"
     }
-
-@app.post("/api/v1/ai/predict-churn")
-def predict_churn(customer_data: dict):
-    return churn_engine.predict_churn_risk(customer_data)
