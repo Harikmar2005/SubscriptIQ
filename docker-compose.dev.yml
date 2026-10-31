@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: subflow_api_dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-subflow_user}:${POSTGRES_PASSWORD:-subflow_password}@db:5432/${POSTGRES_DB:-subflow_enterprise}
+      - SECRET_KEY=${SECRET_KEY:-enterprise_development_jwt_secret_key_2026}
+      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID:-rzp_test_simulated_key}
+      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET:-rzp_test_simulated_secret}
+      - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET:-rzp_webhook_secret_key}
+      - REDIS_URL=redis://redis:6379/0
+      - IS_RAZORPAY_TEST_MODE=true
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: subflow_worker_dev
+    command: celery -A app.core.celery_worker.celery_app worker -l info --concurrency=1
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-subflow_user}:${POSTGRES_PASSWORD:-subflow_password}@db:5432/${POSTGRES_DB:-subflow_enterprise}
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-enterprise_development_jwt_secret_key_2026}
+
+  celery_scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: subflow_cron_dev
+    command: celery -A app.core.celery_worker.celery_app beat -l info
+    volumes:
+      - .:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-subflow_user}:${POSTGRES_PASSWORD:-subflow_password}@db:5432/${POSTGRES_DB:-subflow_enterprise}
+      - REDIS_URL=redis://redis:6379/0
+
+  db:
+    image: postgres:16-alpine
+    container_name: subflow_postgres_dev
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-subflow_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-subflow_password}
+      POSTGRES_DB: ${POSTGRES_DB:-subflow_enterprise}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: subflow_redis_dev
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_dev_data:

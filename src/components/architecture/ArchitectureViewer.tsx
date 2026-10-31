@@ -395,51 +395,80 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: subflow_api
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://subflow_user:subflow_secure_password@db:5432/subflow_enterprise
-      - SECRET_KEY=enterprise_jwt_super_secret_signing_key_2026
-      - RAZORPAY_KEY_ID=rzp_test_simulated_key
-      - RAZORPAY_KEY_SECRET=rzp_test_simulated_secret
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=\${DATABASE_URL}
+      - SECRET_KEY=\${SECRET_KEY}
+      - RAZORPAY_KEY_ID=\${RAZORPAY_KEY_ID}
+      - RAZORPAY_KEY_SECRET=\${RAZORPAY_KEY_SECRET}
+      - REDIS_URL=\${REDIS_URL}
     depends_on:
-      - db
-      - redis
-    restart: always
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: subflow_celery_worker
+    restart: unless-stopped
+    command: celery -A app.core.celery_worker.celery_app worker -l info --concurrency=2
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   celery_scheduler:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: subflow_renewal_cron
-    command: celery -A app.core.celery_worker beat -l info
+    restart: unless-stopped
+    command: celery -A app.core.celery_worker.celery_app beat -l info
     depends_on:
-      - db
-      - redis
-    environment:
-      - DATABASE_URL=postgresql://subflow_user:subflow_secure_password@db:5432/subflow_enterprise
+      redis:
+        condition: service_healthy
 
   db:
     image: postgres:16-alpine
     container_name: subflow_postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: subflow_user
-      POSTGRES_PASSWORD: subflow_secure_password
-      POSTGRES_DB: subflow_enterprise
+      POSTGRES_USER: \${POSTGRES_USER:-subflow_user}
+      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD}
+      POSTGRES_DB: \${POSTGRES_DB:-subflow_enterprise}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \\$\\$POSTGRES_USER -d \\$\\$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
     container_name: subflow_redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
-  postgres_data:`,
+  postgres_data:
+  redis_data:`,
     },
     fastapi_subscriptions: {
       title: 'app/api/v1/subscriptions.py (REST API Router)',
