@@ -1,0 +1,6 @@
+{
+  "name": "SubFlow Enterprise",
+  "description": "Enterprise Subscription Management & Recurring Billing Platform with AI churn intelligence, automated renewal workflows, and multi-tenant customer portal.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

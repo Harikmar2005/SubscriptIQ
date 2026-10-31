@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: subflow_api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://subflow_user:subflow_password@db:5432/subflow_enterprise
+      - SECRET_KEY=enterprise_jwt_super_secret_signing_key_2026
+      - RAZORPAY_KEY_ID=rzp_test_simulated_key
+      - RAZORPAY_KEY_SECRET=rzp_test_simulated_secret
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+    restart: always
+
+  celery_scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: subflow_renewal_cron
+    command: celery -A app.core.celery_worker beat -l info
+    depends_on:
+      - db
+      - redis
+    environment:
+      - DATABASE_URL=postgresql://subflow_user:subflow_password@db:5432/subflow_enterprise
+
+  db:
+    image: postgres:16-alpine
+    container_name: subflow_postgres
+    environment:
+      POSTGRES_USER: subflow_user
+      POSTGRES_PASSWORD: subflow_password
+      POSTGRES_DB: subflow_enterprise
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: subflow_redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:
