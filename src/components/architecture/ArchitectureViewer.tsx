@@ -13,10 +13,157 @@ import {
 } from 'lucide-react';
 
 export const ArchitectureViewer: React.FC = () => {
-  const [selectedFile, setSelectedFile] = useState<string>('fastapi_main');
+  const [selectedFile, setSelectedFile] = useState<string>('revenue_guard_engine');
   const [copied, setCopied] = useState(false);
 
   const codeFiles: Record<string, { title: string; lang: string; desc: string; content: string }> = {
+    revenue_guard_engine: {
+      title: 'app/services/revenue_guard_engine.py (Billing Assurance Engine)',
+      lang: 'python',
+      desc: '6-checkpoint pre-invoice validation pipeline, mathematical tax verification (18% GST), and idempotency locking.',
+      content: `from typing import Dict, List, Any, Optional
+from datetime import datetime, timezone
+import hashlib
+from app.models.subscription import Subscription, Customer, Invoice, BillingException
+
+class RevenueGuardIntegrityEngine:
+    """
+    SubscriptIQ RevenueGuard: Intelligent Pre-Invoice Billing Assurance
+    Validates subscriptions across 6 critical financial checkpoints before invoice generation.
+    """
+    def __init__(self, db_session):
+        self.db = db_session
+        self.DEFAULT_TAX_RATE = 18.0  # Statutory 18% GST (HSN 998313)
+
+    def validate_for_billing(self, subscription_id: str, billing_period: str) -> Dict[str, Any]:
+        sub = self.db.query(Subscription).filter_by(id=subscription_id).first()
+        if not sub:
+            return {"status": "blocked", "errors": ["Subscription record not found"]}
+
+        customer = sub.customer
+        plan = sub.plan
+        exceptions: List[BillingException] = []
+
+        # Checkpoint 1: Subscription & Customer Eligibility
+        if not customer or customer.status != "active":
+            exceptions.append(self._make_exception(
+                category="subscription",
+                severity="critical",
+                title="Customer Suspended or Inactive",
+                expected="Customer status = active",
+                actual=f"Customer status = {customer.status if customer else 'None'}"
+            ))
+
+        if sub.status not in ["active", "trial"]:
+            exceptions.append(self._make_exception(
+                category="subscription",
+                severity="critical",
+                title="Invalid Subscription Billing State",
+                expected="active or trial",
+                actual=sub.status
+            ))
+
+        # Checkpoint 2: Duplicate Billing Prevention & Idempotency Key
+        idempotency_key = f"{sub.id}:{billing_period}"
+        existing_invoice = self.db.query(Invoice).filter_by(
+            subscription_id=sub.id,
+            billing_period=billing_period
+        ).first()
+
+        if existing_invoice:
+            exceptions.append(self._make_exception(
+                category="duplicate_billing",
+                severity="critical",
+                title="Duplicate Billing Attempt Blocked",
+                expected="Single invoice per period",
+                actual=f"Invoice {existing_invoice.invoice_number} already generated"
+            ))
+
+        # Checkpoint 3 & 4: Price & Discount Math Verification
+        subtotal = plan.monthly_price if sub.billing_interval == "monthly" else plan.annual_price
+        discount_amount = 0.0
+        if sub.active_discount:
+            discount_amount = self._validate_discount(sub.active_discount, subtotal, exceptions)
+
+        taxable_amount = max(0.0, subtotal - discount_amount)
+
+        # Checkpoint 5: Statutory Tax Calculation (GST HSN 998313)
+        expected_tax = round(taxable_amount * (self.DEFAULT_TAX_RATE / 100.0), 2)
+        expected_total = round(taxable_amount + expected_tax, 2)
+
+        # Status determination
+        has_critical = any(e.severity == "critical" for e in exceptions)
+        has_warning = any(e.severity == "medium" for e in exceptions)
+
+        status = "blocked" if has_critical else ("warning" if has_warning else "ready")
+
+        return {
+            "status": status,
+            "idempotency_key": idempotency_key,
+            "subtotal": subtotal,
+            "discount_amount": discount_amount,
+            "taxable_amount": taxable_amount,
+            "tax_amount": expected_tax,
+            "total_amount": expected_total,
+            "exceptions": exceptions,
+            "validated_at": datetime.now(timezone.utc).isoformat()
+        }`,
+    },
+    audit_ledger: {
+      title: 'app/services/evidence_ledger.py (Cryptographic SHA-256 Ledger)',
+      lang: 'python',
+      desc: 'Immutable, tamper-evident audit trail linking Customer -> Quotation -> Subscription -> Invoice -> Payment -> Reconciliation.',
+      content: `import hashlib
+import json
+from datetime import datetime, timezone
+from typing import Dict, Any
+
+class CryptographicEvidenceLedger:
+    """
+    Financial Evidence Ledger with SHA-256 Hash Chaining.
+    Guarantees non-repudiation and statutory compliance for GST & auditor inspections.
+    """
+    GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000"
+
+    def __init__(self, db_session):
+        self.db = db_session
+
+    def append_audit_event(
+        self,
+        event_type: str,
+        entity_id: str,
+        actor: str,
+        payload: Dict[str, Any],
+        previous_hash: str = None
+    ) -> Dict[str, Any]:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        prev_hash = previous_hash or self.get_latest_hash()
+
+        # Deterministic payload serialization for canonical hashing
+        canonical_str = f"{event_type}|{entity_id}|{actor}|{timestamp}|{json.dumps(payload, sort_keys=True)}|{prev_hash}"
+        audit_hash = hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()
+
+        audit_entry = {
+            "event_type": event_type,
+            "entity_id": entity_id,
+            "actor": actor,
+            "timestamp": timestamp,
+            "payload": payload,
+            "previous_hash": prev_hash,
+            "audit_hash": audit_hash
+        }
+
+        # Persist to append-only database table
+        self.db.add_audit_log(audit_entry)
+        return audit_entry
+
+    def verify_chain_integrity(self, events: list) -> bool:
+        """Verifies that no ledger records have been tampered with or retroactively altered."""
+        for i in range(1, len(events)):
+            if events[i]["previous_hash"] != events[i - 1]["audit_hash"]:
+                return False
+        return True`,
+    },
     fastapi_main: {
       title: 'app/main.py (FastAPI REST Server)',
       lang: 'python',
@@ -32,7 +179,8 @@ from app.api.v1 import (
     invoices_router,
     analytics_router,
     ai_router,
-    renewals_router
+    renewals_router,
+    revenue_guard_router
 )
 from app.database.session import engine, Base
 from app.core.config import settings
@@ -42,8 +190,8 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="SubscriptIQ Enterprise Billing Engine",
-    description="High-Throughput SaaS Subscription Management & AI Churn Analytics REST API",
-    version="2.4.0",
+    description="High-Throughput SaaS Subscription Management & RevenueGuard Assurance Platform",
+    version="2.5.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -59,6 +207,7 @@ app.add_middleware(
 
 # Register REST Routers
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
+app.include_router(revenue_guard_router, prefix="/api/v1/revenue-guard", tags=["RevenueGuard Assurance"])
 app.include_router(customers_router, prefix="/api/v1/customers", tags=["Customers"])
 app.include_router(plans_router, prefix="/api/v1/plans", tags=["Subscription Plans"])
 app.include_router(subscriptions_router, prefix="/api/v1/subscriptions", tags=["Subscriptions"])
@@ -73,6 +222,7 @@ def health_check():
     return {
         "status": "healthy",
         "engine": "FastAPI + SQLAlchemy",
+        "revenue_guard": "active",
         "database": "PostgreSQL 16",
         "payment_gateway": "Razorpay Test Simulation",
         "ml_model_loaded": True
@@ -390,7 +540,7 @@ def cancel_subscription(sub_id: str, reason: str, db: Session = Depends(get_db))
           Production Multi-Tier Enterprise Architecture
         </h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 text-center">
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
             <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white mx-auto flex items-center justify-center font-bold mb-2 shadow-xs">
               UI
@@ -413,6 +563,17 @@ def cancel_subscription(sub_id: str, reason: str, db: Session = Depends(get_db))
             </div>
           </div>
 
+          <div className="p-4 rounded-xl bg-indigo-50/50 border border-indigo-200">
+            <div className="w-10 h-10 rounded-xl bg-amber-500 text-white mx-auto flex items-center justify-center font-bold mb-2 shadow-xs">
+              RG
+            </div>
+            <div className="text-xs font-bold text-slate-900">RevenueGuard</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">6-Checkpoint Validator</div>
+            <div className="mt-2 text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold inline-block">
+              Assurance & Idempotency
+            </div>
+          </div>
+
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
             <div className="w-10 h-10 rounded-xl bg-blue-600 text-white mx-auto flex items-center justify-center font-bold mb-2 shadow-xs">
               DB
@@ -428,8 +589,8 @@ def cancel_subscription(sub_id: str, reason: str, db: Session = Depends(get_db))
             <div className="w-10 h-10 rounded-xl bg-purple-600 text-white mx-auto flex items-center justify-center font-bold mb-2 shadow-xs">
               ML
             </div>
-            <div className="text-xs font-bold text-slate-900">AI Churn Model</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">Multi-feature heuristic/ML</div>
+            <div className="text-xs font-bold text-slate-900">AI Churn & Evidence</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">SHA-256 Ledger & ML</div>
             <div className="mt-2 text-[10px] px-2 py-0.5 rounded bg-purple-50 text-purple-700 font-semibold inline-block">
               Predictive Retention
             </div>

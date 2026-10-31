@@ -19,6 +19,14 @@ import { CustomerPortalView } from './components/customerPortal/CustomerPortalVi
 import { ArchitectureViewer } from './components/architecture/ArchitectureViewer';
 import { SimulatePaymentModal } from './components/payments/SimulatePaymentModal';
 import { CreateSubscriptionModal } from './components/subscriptions/CreateSubscriptionModal';
+import { RevenueGuardOverview } from './components/revenueguard/RevenueGuardOverview';
+import { IntegrityScannerView } from './components/revenueguard/IntegrityScannerView';
+import { BillingRunsView } from './components/revenueguard/BillingRunsView';
+import { RevenueLeakageRadarView } from './components/revenueguard/RevenueLeakageRadarView';
+import { PaymentReconciliationView } from './components/revenueguard/PaymentReconciliationView';
+import { BillingCalendarView } from './components/revenueguard/BillingCalendarView';
+import { FinancialEvidenceLedgerView } from './components/revenueguard/FinancialEvidenceLedgerView';
+import { ProductsAndQuotationsView } from './components/revenueguard/ProductsAndQuotationsView';
 import {
   Users,
   CalendarDays,
@@ -34,7 +42,7 @@ import {
 import { Customer, Subscription } from './types';
 
 const DashboardContent: React.FC = () => {
-  const { metrics, setActiveTab, subscriptions } = useApp();
+  const { metrics, setActiveTab, subscriptions, billingHealthScore } = useApp();
 
   return (
     <div className="space-y-6">
@@ -49,7 +57,14 @@ const DashboardContent: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <button
+            onClick={() => setActiveTab('revenueguard-overview')}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200/80 font-bold hover:bg-indigo-100 transition-colors"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+            RevenueGuard: Health {billingHealthScore.overallScore}/100 (Grade {billingHealthScore.grade})
+          </button>
           <span className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200/80 font-medium">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             Billing Engine: Live & Synchronized
@@ -193,7 +208,11 @@ const MainAppContent: React.FC = () => {
               />
             )}
 
+            {activeTab === 'products' && <ProductsAndQuotationsView />}
+
             {activeTab === 'plans' && <PlanCards />}
+
+            {activeTab === 'quotations' && <ProductsAndQuotationsView />}
 
             {activeTab === 'subscriptions' && (
               <SubscriptionTable
@@ -208,6 +227,21 @@ const MainAppContent: React.FC = () => {
             {activeTab === 'invoices' && <InvoiceTable />}
 
             {activeTab === 'renewals' && <RenewalManager />}
+
+            {/* RevenueGuard Suite */}
+            {activeTab === 'revenueguard-overview' && <RevenueGuardOverview />}
+
+            {activeTab === 'revenueguard-scanner' && <IntegrityScannerView />}
+
+            {activeTab === 'revenueguard-runs' && <BillingRunsView />}
+
+            {activeTab === 'revenueguard-leakage' && <RevenueLeakageRadarView />}
+
+            {activeTab === 'revenueguard-reconciliation' && <PaymentReconciliationView />}
+
+            {activeTab === 'revenueguard-calendar' && <BillingCalendarView />}
+
+            {activeTab === 'revenueguard-ledger' && <FinancialEvidenceLedgerView />}
 
             {activeTab === 'ai-insights' && <AIChurnDashboard />}
 

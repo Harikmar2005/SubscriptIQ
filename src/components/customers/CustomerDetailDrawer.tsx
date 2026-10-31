@@ -207,10 +207,10 @@ export const CustomerDetailDrawer: React.FC<CustomerDetailDrawerProps> = ({
                   <span className="text-slate-500">Metered Overages:</span>
                   <span
                     className={`font-bold ${
-                      usage.meteredOveragesInr > 0 ? 'text-amber-700' : 'text-emerald-700'
+                      (usage.meteredOveragesInr ?? 0) > 0 ? 'text-amber-700' : 'text-emerald-700'
                     }`}
                   >
-                    {usage.meteredOveragesInr > 0
+                    {(usage.meteredOveragesInr ?? 0) > 0
                       ? `+₹${usage.meteredOveragesInr} (Auto-invoiced)`
                       : 'Included in base quota'}
                   </span>

@@ -382,3 +382,343 @@ export interface DashboardMetrics {
   reconciledVolume: number;
   unreconciledVolume: number;
 }
+
+// ==========================================
+// REVENUEGUARD CORE TYPES
+// ==========================================
+
+export interface ProductVariant {
+  id: string;
+  productId: string;
+  name: string;
+  sku: string;
+  priceAdjustment: number; // e.g. +₹200 or -₹50
+  billingType: 'flat' | 'per_seat' | 'usage';
+  isActive: boolean;
+}
+
+export interface Product {
+  id: string;
+  tenantId?: string;
+  name: string;
+  code: string;
+  description: string;
+  category: 'core_platform' | 'security' | 'integration' | 'support' | 'custom';
+  basePrice: number; // in INR
+  currency: 'INR' | 'USD';
+  taxCode: string; // e.g. 998313
+  isActive: boolean;
+  variants: ProductVariant[];
+  createdAt: string;
+}
+
+export interface DiscountRule {
+  id: string;
+  tenantId?: string;
+  code: string;
+  description: string;
+  discountType: 'percentage' | 'fixed_amount';
+  value: number; // e.g. 20 (percent) or 500 (flat INR)
+  minPurchaseAmount: number;
+  minQuantity: number;
+  usageLimit: number;
+  currentUsageCount: number;
+  startDate: string;
+  endDate: string;
+  applicablePlanIds: string[];
+  applicableProductIds: string[];
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface QuotationItem {
+  id: string;
+  productId?: string;
+  planId?: string;
+  variantId?: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  variantAdjustment: number;
+  subtotal: number;
+}
+
+export interface Quotation {
+  id: string;
+  tenantId?: string;
+  quotationNumber: string;
+  customerId: string;
+  customerName: string;
+  company: string;
+  salesRep: string;
+  items: QuotationItem[];
+  subtotal: number;
+  discountCode?: string;
+  discountAmount: number;
+  taxAmount: number; // 18% GST
+  totalAmount: number;
+  status: 'draft' | 'sent' | 'accepted' | 'rejected' | 'converted';
+  validUntil: string;
+  convertedSubscriptionId?: string;
+  createdAt: string;
+}
+
+export interface TaxConfiguration {
+  id: string;
+  name: string;
+  hsnSacCode: string; // 998313 for IT SaaS
+  gstRatePct: number; // 18%
+  cgstPct: number;    // 9%
+  sgstPct: number;    // 9%
+  igstPct: number;    // 18%
+  isInterStateDefault: boolean;
+}
+
+export type ExceptionCategory =
+  | 'subscription'
+  | 'product'
+  | 'price'
+  | 'discount'
+  | 'tax'
+  | 'duplicate_billing';
+
+export type ExceptionSeverity = 'critical' | 'high' | 'medium' | 'low';
+
+export type ResolutionStatus = 'open' | 'reviewed' | 'resolved' | 'overridden';
+
+export interface BillingException {
+  id: string;
+  tenantId?: string;
+  subscriptionId: string;
+  customerId: string;
+  customerName: string;
+  billingPeriod: string;
+  category: ExceptionCategory;
+  severity: ExceptionSeverity;
+  title: string;
+  description: string;
+  expectedValue: string;
+  actualValue: string;
+  financialImpact: number;
+  resolutionStatus: ResolutionStatus;
+  overriddenBy?: string;
+  overrideReason?: string;
+  detectedAt: string;
+  resolvedAt?: string;
+  remediationAction?: string;
+}
+
+export interface SubscriptionValidationDetail {
+  subscriptionId: string;
+  customerId: string;
+  customerName: string;
+  planName: string;
+  billingInterval: 'monthly' | 'annual';
+  status: 'ready' | 'warning' | 'blocked';
+  checks: {
+    checkName: string;
+    category: ExceptionCategory;
+    passed: boolean;
+    message: string;
+    severity?: ExceptionSeverity;
+  }[];
+  exceptions: BillingException[];
+  calculatedInvoice: {
+    subtotal: number;
+    discountAmount: number;
+    taxAmount: number;
+    totalAmount: number;
+  };
+}
+
+export interface BillingValidationResult {
+  totalChecked: number;
+  readyCount: number;
+  warningCount: number;
+  blockedCount: number;
+  totalExposure: number;
+  subscriptions: SubscriptionValidationDetail[];
+  validatedAt: string;
+}
+
+export interface BillingRun {
+  id: string;
+  tenantId?: string;
+  runNumber: string;
+  billingDate: string;
+  billingPeriod: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'partially_completed';
+  totalSubscriptions: number;
+  readyCount: number;
+  warningCount: number;
+  blockedCount: number;
+  invoicesGeneratedCount: number;
+  totalBilledAmount: number;
+  duplicateAttemptsBlocked: number;
+  initiatedBy: string;
+  startedAt: string;
+  completedAt?: string;
+  exceptionsSummary: Record<ExceptionCategory, number>;
+  idempotencyKey: string;
+}
+
+export interface PaymentAllocation {
+  id: string;
+  tenantId?: string;
+  paymentId: string;
+  invoiceId: string;
+  amount: number;
+  allocatedAt: string;
+  reconciliationStatus: 'matched' | 'partially_matched' | 'exception';
+  allocatedBy: string;
+}
+
+export type LeakageType =
+  | 'missing_billing'
+  | 'duplicate_billing'
+  | 'incorrect_discount'
+  | 'tax_mismatch'
+  | 'price_mismatch'
+  | 'unmatched_payment'
+  | 'overdue_invoice';
+
+export interface RevenueLeakageItem {
+  id: string;
+  tenantId?: string;
+  type: LeakageType;
+  title: string;
+  customerName: string;
+  customerId: string;
+  subscriptionId?: string;
+  invoiceId?: string;
+  paymentId?: string;
+  financialExposure: number; // Potential loss or unbilled/mismatched money
+  recoveredAmount: number;
+  severity: ExceptionSeverity;
+  detectedAt: string;
+  status: 'detected' | 'investigating' | 'resolved';
+  rootCause: string;
+  details: string;
+  actionRequired: string;
+}
+
+export interface HealthScoreComponent {
+  name: string;
+  score: number;
+  maxScore: number;
+  value: string;
+  explanation: string;
+  status: 'good' | 'warning' | 'critical';
+}
+
+export interface BillingHealthScoreBreakdown {
+  overallScore: number; // 0 to 100
+  grade: 'A+' | 'A' | 'B' | 'C' | 'D' | 'F';
+  summary: string;
+  components: {
+    validationRate: HealthScoreComponent;
+    duplicateBilling: HealthScoreComponent;
+    taxAccuracy: HealthScoreComponent;
+    reconciliationRate: HealthScoreComponent;
+    overdueReceivables: HealthScoreComponent;
+  };
+  calculatedAt: string;
+}
+
+export interface AuditEvent {
+  id: string;
+  tenantId?: string;
+  entityType: 'subscription' | 'invoice' | 'payment' | 'billing_run' | 'exception' | 'discount';
+  entityId: string;
+  action: string;
+  performedBy: string;
+  timestamp: string;
+  previousValue?: string;
+  newValue?: string;
+  auditHash: string; // Cryptographic-style verification stamp
+}
+
+export interface FinancialEvidenceTrail {
+  invoiceId: string;
+  invoiceNumber: string;
+  customer: {
+    id: string;
+    name: string;
+    company: string;
+    email: string;
+    taxId?: string;
+  };
+  quotation?: Quotation;
+  subscription: {
+    id: string;
+    planName: string;
+    billingInterval: string;
+    periodStart: string;
+    periodEnd: string;
+    status: string;
+  };
+  productLines: {
+    name: string;
+    variantName?: string;
+    basePrice: number;
+    variantAdjustment: number;
+    quantity: number;
+    lineTotal: number;
+  }[];
+  billingValidation: {
+    status: 'passed' | 'warning' | 'overridden';
+    validatedAt: string;
+    passedChecksCount: number;
+    validatorEngine: string;
+  };
+  financialMath: {
+    subtotal: number;
+    discountApplied: number;
+    discountCode?: string;
+    taxableAmount: number;
+    cgstAmount: number;
+    sgstAmount: number;
+    igstAmount: number;
+    totalAmount: number;
+  };
+  payments: {
+    paymentId: string;
+    transactionId: string;
+    gateway: string;
+    amount: number;
+    status: string;
+    timestamp: string;
+  }[];
+  reconciliation: {
+    status: 'matched' | 'partially_matched' | 'unmatched';
+    matchedAmount: number;
+    outstandingBalance: number;
+    reconciledAt?: string;
+  };
+  auditHistory: AuditEvent[];
+}
+
+export interface CalendarDayScheduledItem {
+  date: string; // YYYY-MM-DD
+  subscriptionsDueCount: number;
+  expectedInvoiceAmount: number;
+  expectedCollections: number;
+  expiringDiscountsCount: number;
+  expiringContractsCount: number;
+  subscriptions: {
+    id: string;
+    customerId: string;
+    customerName: string;
+    company: string;
+    planName: string;
+    amount: number;
+    billingInterval: string;
+    churnRisk: string;
+  }[];
+  discountsExpiring: {
+    code: string;
+    description: string;
+    expiryDate: string;
+  }[];
+}
+
